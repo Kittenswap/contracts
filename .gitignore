@@ -1,0 +1,17 @@
+# Foundry
+cache/
+out/
+
+# JS
+node_modules/
+
+#Hardhat files
+cache_hardhat/
+artifacts/
+
+#Hardhat plugin files
+typechain-types/
+/broadcast
+.env
+.DS_Store
+misc/nft_foundry_list_2d.json

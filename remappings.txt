@@ -1,0 +1,14 @@
+@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/
+@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/
+ds-test/=lib/ds-test/src/
+erc4626-tests/=lib/openzeppelin-contracts-upgradeable/lib/erc4626-tests/
+forge-std/=lib/forge-std/src/
+halmos-cheatcodes/=lib/openzeppelin-contracts-upgradeable/lib/halmos-cheatcodes/src/
+openzeppelin-contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/
+openzeppelin-contracts/=lib/openzeppelin-contracts/
+openzeppelin-contracts-v3.4.2/=lib/openzeppelin-contracts-v3.4.2/
+solmate/=lib/solmate/src/
+@uniswap/v3-core/=lib/v3-core/
+uniswap/=lib/solidity-lib/
+base64-sol/=lib/base64/
+@nomad-xyz/src/=lib/ExcessivelySafeCall/src/
