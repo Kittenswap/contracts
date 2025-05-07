@@ -5,17 +5,44 @@ import "../../libraries/Math.sol";
 import "../../interfaces/IBribe.sol";
 import "../../interfaces/IERC20.sol";
 import "./interfaces/ICLGauge.sol";
-import "./interfaces/IPair.sol";
-import "./interfaces/IVoter.sol";
-import "./interfaces/IVotingEscrow.sol";
+import {IVoter} from "../../interfaces/IVoter.sol";
+import {IVotingEscrow} from "../../interfaces/IVotingEscrow.sol";
 
-import {INonFungiblePositionManager} from "../periphery/interfaces/INonFungiblePositionManager.sol";
+import {INonfungiblePositionManager} from "../periphery/interfaces/INonfungiblePositionManager.flatten.sol";
 
 import {EnumerableSet} from "openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol";
 
 import {ICLPool} from "../core/interfaces/ICLPool.sol";
 
 import {FixedPoint128} from "../core/libraries/FixedPoint128.sol";
+
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
+import {ERC721Holder} from "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
+
+library ProtocolTimeLibrary {
+    uint256 internal constant WEEK = 7 days;
+
+    /// @dev Returns start of epoch based on current timestamp
+    function epochStart(uint256 timestamp) internal pure returns (uint256) {
+        return timestamp - (timestamp % WEEK);
+    }
+
+    /// @dev Returns start of next epoch / end of current epoch
+    function epochNext(uint256 timestamp) internal pure returns (uint256) {
+        return timestamp - (timestamp % WEEK) + WEEK;
+    }
+
+    /// @dev Returns start of voting window
+    function epochVoteStart(uint256 timestamp) internal pure returns (uint256) {
+        return timestamp - (timestamp % WEEK) + 1 hours;
+    }
+
+    /// @dev Returns end of voting window / beginning of unrestricted voting window
+    function epochVoteEnd(uint256 timestamp) internal pure returns (uint256) {
+        return timestamp - (timestamp % WEEK) + WEEK - 1 hours;
+    }
+}
 
 /* 
 Changes to original Gauge to support CL:
@@ -26,22 +53,29 @@ Changes to original Gauge to support CL:
  */
 
 // Gauges are used to incentivize pools, they emit reward tokens over 7 days for staked LP tokens
-contract CLGauge is ICLGauge {
+contract CLGauge is
+    ICLGauge,
+    UUPSUpgradeable,
+    Ownable2StepUpgradeable,
+    ERC721Holder
+{
     using EnumerableSet for EnumerableSet.UintSet;
 
-    INonFungiblePositionManager public nfp;
+    INonfungiblePositionManager public nfp;
     address public token0;
     address public token1;
     int24 public tickSpacing;
 
-    mapping(address => EnumerableSet.UintSet) public userStakedNFPs;
+    mapping(address => EnumerableSet.UintSet) internal userStakedNFPs;
 
-    ICLPool public override pool;
+    ICLPool public pool;
 
     mapping(uint256 nfpTokenId => uint256) public rewardGrowthInside;
     mapping(uint256 nfpTokenId => uint256) public lastUpdateTime;
 
     mapping(uint256 nfpTokenId => uint256) public rewards;
+
+    address public kitten;
 
     /* events */
     event Deposit(
@@ -50,113 +84,75 @@ contract CLGauge is ICLGauge {
         uint256 tokenId,
         uint256 liquidityStaked
     );
+    event Withdraw(
+        address indexed from,
+        uint256 nfpTokenId,
+        uint tokenId,
+        uint liquidityUnstaked
+    );
 
     /* errors */
     error CLGauge__InvalidTokenId();
 
-    address public immutable stake; // the LP token that needs to be staked for rewards
-    address public immutable _ve; // the ve token used for gauges
-    address public immutable internal_bribe;
-    address public immutable external_bribe;
-    address public immutable voter;
+    address public _ve; // the ve token used for gauges
+    address public internal_bribe;
+    address public voter;
 
     uint public derivedSupply;
     mapping(address => uint) public derivedBalances;
 
     bool public isForPair;
 
-    uint internal constant DURATION = 7 days; // rewards are released over 7 days
     uint internal constant PRECISION = 10 ** 18;
     uint internal constant MAX_REWARD_TOKENS = 16;
 
     // default snx staking contract implementation
-    mapping(address => uint) public rewardRate;
-    mapping(address => uint) public periodFinish;
-    mapping(address => uint) public lastUpdateTime;
-    mapping(address => uint) public rewardPerTokenStored;
-
-    mapping(address => mapping(address => uint)) public lastEarn;
-    mapping(address => mapping(address => uint))
-        public userRewardPerTokenStored;
+    uint public rewardRate;
+    uint public periodFinish;
 
     mapping(address => uint) public tokenIds;
 
     uint public totalSupply;
     mapping(address => uint) public balanceOf;
 
-    address[] public rewards;
     mapping(address => bool) public isReward;
-
-    /// @notice A checkpoint for marking balance
-    struct Checkpoint {
-        uint timestamp;
-        uint balanceOf;
-    }
-
-    /// @notice A checkpoint for marking reward rate
-    struct RewardPerTokenCheckpoint {
-        uint timestamp;
-        uint rewardPerToken;
-    }
-
-    /// @notice A checkpoint for marking supply
-    struct SupplyCheckpoint {
-        uint timestamp;
-        uint supply;
-    }
-
-    /// @notice A record of balance checkpoints for each account, by index
-    mapping(address => mapping(uint => Checkpoint)) public checkpoints;
-    /// @notice The number of checkpoints for each account
-    mapping(address => uint) public numCheckpoints;
-    /// @notice A record of balance checkpoints for each token, by index
-    mapping(uint => SupplyCheckpoint) public supplyCheckpoints;
-    /// @notice The number of checkpoints
-    uint public supplyNumCheckpoints;
-    /// @notice A record of balance checkpoints for each token, by index
-    mapping(address => mapping(uint => RewardPerTokenCheckpoint))
-        public rewardPerTokenCheckpoints;
-    /// @notice The number of checkpoints for each token
-    mapping(address => uint) public rewardPerTokenNumCheckpoints;
 
     uint public fees0;
     uint public fees1;
 
-    event Withdraw(address indexed from, uint tokenId, uint amount);
-    event NotifyReward(
-        address indexed from,
-        address indexed reward,
-        uint amount
-    );
+    event NotifyReward(address indexed from, uint amount);
     event ClaimFees(address indexed from, uint claimed0, uint claimed1);
     event ClaimRewards(address indexed from, uint amount);
 
-    constructor(
-        address _stake,
+    function initialize(
+        address _pool,
         address _internal_bribe,
-        address _external_bribe,
+        address _kitten,
         address __ve,
         address _voter,
-        bool _forPair,
-        address[] memory _allowedRewardTokens
-    ) {
-        stake = _stake;
+        address _nfp,
+        bool _forPair
+    ) external initializer {
+        pool = ICLPool(_pool);
         internal_bribe = _internal_bribe;
-        external_bribe = _external_bribe;
+        kitten = _kitten;
         _ve = __ve;
         voter = _voter;
-        isForPair = _forPair;
 
-        for (uint i; i < _allowedRewardTokens.length; i++) {
-            if (_allowedRewardTokens[i] != address(0)) {
-                isReward[_allowedRewardTokens[i]] = true;
-                rewards.push(_allowedRewardTokens[i]);
-            }
-        }
+        nfp = INonfungiblePositionManager(_nfp);
+        token0 = pool.token0();
+        token1 = pool.token1();
+        tickSpacing = pool.tickSpacing();
+
+        isForPair = _forPair;
+        _unlocked = 1;
+
+        __Ownable_init(msg.sender);
+        __UUPSUpgradeable_init();
     }
 
     // simple re-entrancy check
-    uint internal _unlocked = 1;
+    uint internal _unlocked;
     modifier lock() {
         require(_unlocked == 1);
         _unlocked = 2;
@@ -164,36 +160,47 @@ contract CLGauge is ICLGauge {
         _unlocked = 1;
     }
 
+    mapping(uint _blockNumber => mapping(address _user => bool)) userBlockLocked; // 1 action per block, eg deposit or withdraw
+
+    modifier actionLock() {
+        require(
+            userBlockLocked[block.number][msg.sender] == false,
+            "Action Locked"
+        );
+        userBlockLocked[block.number][msg.sender] = true;
+        _;
+    }
+
     function claimFees() external lock returns (uint claimed0, uint claimed1) {
         return _claimFees();
     }
 
     function _claimFees() internal returns (uint claimed0, uint claimed1) {
-        if (!isForPair) {
-            return (0, 0);
-        }
-        (claimed0, claimed1) = IPair(stake).claimFees();
+        if (!isForPair) return (0, 0);
+
+        (claimed0, claimed1) = pool.collectFees();
+
         if (claimed0 > 0 || claimed1 > 0) {
             uint _fees0 = fees0 + claimed0;
             uint _fees1 = fees1 + claimed1;
-            (address _token0, address _token1) = IPair(stake).tokens();
+
             if (
-                _fees0 > IBribe(internal_bribe).left(_token0) &&
-                _fees0 / DURATION > 0
+                _fees0 > IBribe(internal_bribe).left(token0) &&
+                _fees0 / ProtocolTimeLibrary.WEEK > 0
             ) {
                 fees0 = 0;
-                _safeApprove(_token0, internal_bribe, _fees0);
-                IBribe(internal_bribe).notifyRewardAmount(_token0, _fees0);
+                _safeApprove(token0, internal_bribe, _fees0);
+                IBribe(internal_bribe).notifyRewardAmount(token0, _fees0);
             } else {
                 fees0 = _fees0;
             }
             if (
-                _fees1 > IBribe(internal_bribe).left(_token1) &&
-                _fees1 / DURATION > 0
+                _fees1 > IBribe(internal_bribe).left(token1) &&
+                _fees1 / ProtocolTimeLibrary.WEEK > 0
             ) {
                 fees1 = 0;
-                _safeApprove(_token1, internal_bribe, _fees1);
-                IBribe(internal_bribe).notifyRewardAmount(_token1, _fees1);
+                _safeApprove(token1, internal_bribe, _fees1);
+                IBribe(internal_bribe).notifyRewardAmount(token1, _fees1);
             } else {
                 fees1 = _fees1;
             }
@@ -202,7 +209,10 @@ contract CLGauge is ICLGauge {
         }
     }
 
-    function getReward(address account) external lock {
+    function getReward(
+        address account,
+        address[] calldata tokens
+    ) external lock {
         require(
             msg.sender == account || msg.sender == voter,
             "Not Owner or Voter"
@@ -232,11 +242,13 @@ contract CLGauge is ICLGauge {
 
         _updateRewardForNfp(nfpTokenId, _tickLower, _tickUpper);
 
-        uint256 reward = rewards[tokenId];
+        uint256 reward = rewards[nfpTokenId];
+        address owner = nfp.ownerOf(nfpTokenId);
 
         if (reward > 0) {
-            delete rewards[tokenId];
-            IERC20(rewardToken).safeTransfer(owner, reward);
+            delete rewards[nfpTokenId];
+            _safeApprove(kitten, address(this), reward);
+            _safeTransferFrom(kitten, address(this), owner, reward);
             emit ClaimRewards(owner, reward);
         }
     }
@@ -251,8 +263,8 @@ contract CLGauge is ICLGauge {
         lastUpdateTime[nfpTokenId] = block.timestamp;
         rewards[nfpTokenId] += earned(nfpTokenId);
         rewardGrowthInside[nfpTokenId] = pool.getRewardGrowthInside(
-            tickLower,
-            tickUpper,
+            _tickLower,
+            _tickUpper,
             0
         );
     }
@@ -285,7 +297,7 @@ contract CLGauge is ICLGauge {
             ,
             ,
 
-        ) = nft.positions(nfpTokenId);
+        ) = nfp.positions(nfpTokenId);
 
         uint256 rewardGrowthInsideInitial = rewardGrowthInside[nfpTokenId];
         uint256 rewardGrowthInsideCurrent = pool.getRewardGrowthInside(
@@ -294,14 +306,29 @@ contract CLGauge is ICLGauge {
             rewardGrowthGlobalX128
         );
 
-        uint256 rewardGrowthInsideDelta = rewardPerTokenInsideX128 -
-            rewardPerTokenInsideInitialX128;
+        uint256 rewardGrowthInsideDelta = rewardGrowthInsideCurrent -
+            rewardGrowthInsideInitial;
 
         return (rewardGrowthInsideDelta * _liquidity) / FixedPoint128.Q128;
     }
 
+    function getUserStakedNFPs(
+        address account
+    ) external view returns (uint256[] memory nfpTokenIdList) {
+        return userStakedNFPs[account].values();
+    }
+
+    function getUserStakedNFPsLength(
+        address account
+    ) external view returns (uint256) {
+        return userStakedNFPs[account].length();
+    }
+
     // deposit NFP tokenId
-    function deposit(uint256 nfpTokenId, uint256 tokenId) public lock {
+    function deposit(
+        uint256 nfpTokenId,
+        uint256 tokenId
+    ) public lock actionLock {
         (
             ,
             ,
@@ -324,7 +351,7 @@ contract CLGauge is ICLGauge {
             _tickSpacing != tickSpacing
         ) revert CLGauge__InvalidTokenId();
 
-        nft.collect(
+        nfp.collect(
             INonfungiblePositionManager.CollectParams({
                 tokenId: nfpTokenId,
                 recipient: msg.sender,
@@ -338,12 +365,12 @@ contract CLGauge is ICLGauge {
         userStakedNFPs[msg.sender].add(nfpTokenId);
 
         // stake nfp liquidity in pool
-        pool.stake(int128(_liquidity), tickLower, tickUpper, true);
+        pool.stake(int128(_liquidity), _tickLower, _tickUpper, true);
 
         // set initial reward growth as reference for calc rewards over time
         uint256 rewardGrowth = pool.getRewardGrowthInside(
-            tickLower,
-            tickUpper,
+            _tickLower,
+            _tickUpper,
             0
         );
         rewardGrowthInside[nfpTokenId] = rewardGrowth;
@@ -361,25 +388,45 @@ contract CLGauge is ICLGauge {
             tokenId = tokenIds[msg.sender];
         }
 
-        IVoter(voter).emitDeposit(tokenId, msg.sender, _liquidity);
         emit Deposit(msg.sender, nfpTokenId, tokenId, _liquidity);
     }
 
-    function withdraw(uint amount) public {
-        uint tokenId = 0;
-        if (amount == balanceOf[msg.sender]) {
-            tokenId = tokenIds[msg.sender];
-        }
-        withdrawToken(amount, tokenId);
-    }
+    function withdraw(uint nfpTokenId) public lock actionLock {
+        require(userStakedNFPs[msg.sender].contains(nfpTokenId), "Not Owner");
 
-    function withdrawToken(uint amount, uint tokenId) public lock {
-        _updateRewardForAllTokens();
+        nfp.collect(
+            INonfungiblePositionManager.CollectParams({
+                tokenId: nfpTokenId,
+                recipient: msg.sender,
+                amount0Max: type(uint128).max,
+                amount1Max: type(uint128).max
+            })
+        );
 
-        totalSupply -= amount;
-        balanceOf[msg.sender] -= amount;
-        _safeTransfer(stake, msg.sender, amount);
+        (
+            ,
+            ,
+            ,
+            ,
+            ,
+            int24 _tickLower,
+            int24 _tickUpper,
+            uint128 _liquidity,
+            ,
+            ,
+            ,
 
+        ) = nfp.positions(nfpTokenId);
+
+        _getReward(nfpTokenId);
+
+        if (_liquidity != 0)
+            pool.stake(-int128(_liquidity), _tickLower, _tickUpper, true);
+
+        userStakedNFPs[msg.sender].remove(nfpTokenId);
+        nfp.safeTransferFrom(address(this), msg.sender, nfpTokenId);
+
+        uint tokenId = tokenIds[msg.sender];
         if (tokenId > 0) {
             require(tokenId == tokenIds[msg.sender]);
             tokenIds[msg.sender] = 0;
@@ -388,89 +435,58 @@ contract CLGauge is ICLGauge {
             tokenId = tokenIds[msg.sender];
         }
 
-        uint _derivedBalance = derivedBalances[msg.sender];
-        derivedSupply -= _derivedBalance;
-        _derivedBalance = derivedBalance(msg.sender);
-        derivedBalances[msg.sender] = _derivedBalance;
-        derivedSupply += _derivedBalance;
-
-        _writeCheckpoint(msg.sender, derivedBalances[msg.sender]);
-        _writeSupplyCheckpoint();
-
-        IVoter(voter).emitWithdraw(tokenId, msg.sender, amount);
-        emit Withdraw(msg.sender, tokenId, amount);
+        emit Withdraw(msg.sender, nfpTokenId, tokenId, _liquidity);
     }
 
     function left(address token) external view returns (uint) {
-        if (block.timestamp >= periodFinish[token]) return 0;
-        uint _remaining = periodFinish[token] - block.timestamp;
-        return _remaining * rewardRate[token];
+        if (block.timestamp >= periodFinish) return 0;
+        uint _remaining = periodFinish - block.timestamp;
+        return _remaining * rewardRate;
     }
 
     function notifyRewardAmount(address token, uint amount) external lock {
-        require(token != stake);
         require(amount > 0);
-        if (!isReward[token]) {
-            require(
-                IVoter(voter).isWhitelisted(token),
-                "rewards tokens must be whitelisted"
-            );
-            require(
-                rewards.length < MAX_REWARD_TOKENS,
-                "too many rewards tokens"
-            );
-        }
-        if (rewardRate[token] == 0)
-            _writeRewardPerTokenCheckpoint(token, 0, block.timestamp);
-        (
-            rewardPerTokenStored[token],
-            lastUpdateTime[token]
-        ) = _updateRewardPerToken(token, type(uint).max, true);
-        _claimFees();
+        require(token == kitten);
 
-        if (block.timestamp >= periodFinish[token]) {
-            _safeTransferFrom(token, msg.sender, address(this), amount);
-            rewardRate[token] = amount / DURATION;
+        _claimFees();
+        pool.updateRewardsGrowthGlobal();
+
+        address msgSender = msg.sender;
+        uint timestamp = block.timestamp;
+        uint epochDurationLeft = ProtocolTimeLibrary.epochNext(timestamp) -
+            timestamp;
+
+        _safeTransferFrom(kitten, msgSender, address(this), amount);
+        amount = amount + pool.rollover();
+
+        uint256 nextPeriodFinish = timestamp + epochDurationLeft;
+
+        if (block.timestamp >= periodFinish) {
+            rewardRate = amount / epochDurationLeft;
+            pool.syncReward({
+                rewardRate: rewardRate,
+                rewardReserve: amount,
+                periodFinish: nextPeriodFinish
+            });
         } else {
-            uint _remaining = periodFinish[token] - block.timestamp;
-            uint _left = _remaining * rewardRate[token];
-            require(amount > _left);
-            _safeTransferFrom(token, msg.sender, address(this), amount);
-            rewardRate[token] = (amount + _left) / DURATION;
+            uint256 newAmount = amount + epochDurationLeft * rewardRate;
+            rewardRate = newAmount / epochDurationLeft;
+            pool.syncReward({
+                rewardRate: rewardRate,
+                rewardReserve: newAmount,
+                periodFinish: nextPeriodFinish
+            });
         }
-        require(rewardRate[token] > 0);
-        uint balance = IERC20(token).balanceOf(address(this));
+
+        require(rewardRate > 0);
+        uint balance = IERC20(kitten).balanceOf(address(this));
         require(
-            rewardRate[token] <= balance / DURATION,
+            rewardRate <= balance / epochDurationLeft,
             "Provided reward too high"
         );
-        periodFinish[token] = block.timestamp + DURATION;
-        if (!isReward[token]) {
-            isReward[token] = true;
-            rewards.push(token);
-        }
+        periodFinish = nextPeriodFinish;
 
-        emit NotifyReward(msg.sender, token, amount);
-    }
-
-    function swapOutRewardToken(
-        uint i,
-        address oldToken,
-        address newToken
-    ) external {
-        require(msg.sender == IVotingEscrow(_ve).team(), "only team");
-        require(rewards[i] == oldToken);
-        isReward[oldToken] = false;
-        isReward[newToken] = true;
-        rewards[i] = newToken;
-    }
-
-    function _safeTransfer(address token, address to, uint256 value) internal {
-        require(token.code.length > 0);
-        (bool success, bytes memory data) = token.call(
-            abi.encodeWithSelector(IERC20.transfer.selector, to, value)
-        );
-        require(success && (data.length == 0 || abi.decode(data, (bool))));
+        emit NotifyReward(msgSender, amount);
     }
 
     function _safeTransferFrom(
@@ -502,4 +518,8 @@ contract CLGauge is ICLGauge {
         );
         require(success && (data.length == 0 || abi.decode(data, (bool))));
     }
+
+    function _authorizeUpgrade(
+        address newImplementation
+    ) internal override onlyOwner {}
 }

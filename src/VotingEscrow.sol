@@ -7,6 +7,8 @@ import {IERC721Receiver} from "openzeppelin-contracts/contracts/token/ERC721/IER
 import {IERC20} from "./interfaces/IERC20.sol";
 import {IVeArtProxy} from "./interfaces/IVeArtProxy.sol";
 import {IVotingEscrow} from "./interfaces/IVotingEscrow.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
 
 /// @title Voting Escrow
 /// @notice veNFT implementation that escrows ERC-20 tokens in the form of an ERC-721 NFT
@@ -14,8 +16,14 @@ import {IVotingEscrow} from "./interfaces/IVotingEscrow.sol";
 /// @author Modified from Solidly (https://github.com/solidlyexchange/solidly/blob/master/contracts/ve.sol)
 /// @author Modified from Curve (https://github.com/curvefi/curve-dao-contracts/blob/master/contracts/VotingEscrow.vy)
 /// @author Modified from Nouns DAO (https://github.com/withtally/my-nft-dao-project/blob/main/contracts/ERC721Checkpointable.sol)
-/// @dev Vote weight decays linearly over time. Lock time cannot be more than `MAXTIME` (4 years).
-contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
+/// @dev Vote weight decays linearly over time. Lock time cannot be more than `MAXTIME` (2 years).
+contract VotingEscrow is
+    IERC721,
+    IERC721Metadata,
+    IVotes,
+    UUPSUpgradeable,
+    Ownable2StepUpgradeable
+{
     enum DepositType {
         DEPOSIT_FOR_TYPE,
         CREATE_LOCK_TYPE,
@@ -59,12 +67,22 @@ contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
     );
     event Withdraw(address indexed provider, uint tokenId, uint value, uint ts);
     event Supply(uint prevSupply, uint supply);
+    event Split(
+        uint256 indexed _from,
+        uint256 indexed _tokenId1,
+        uint256 indexed _tokenId2,
+        address _sender,
+        uint256 _splitAmount1,
+        uint256 _splitAmount2,
+        uint256 _locktime,
+        uint256 _ts
+    );
 
     /*//////////////////////////////////////////////////////////////
                                CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
-    address public immutable token;
+    address public token;
     address public voter;
     address public team;
     address public artProxy;
@@ -87,8 +105,11 @@ contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
     uint internal tokenId;
 
     /// @notice Contract constructor
-    /// @param token_addr `VELO` token address
-    constructor(address token_addr, address art_proxy) {
+    /// @param token_addr `KITTEN` token address
+    function initialize(
+        address token_addr,
+        address art_proxy
+    ) external initializer {
         token = token_addr;
         voter = msg.sender;
         team = msg.sender;
@@ -105,6 +126,11 @@ contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
         emit Transfer(address(0), address(this), tokenId);
         // burn-ish
         emit Transfer(address(this), address(0), tokenId);
+
+        __Ownable_init(msg.sender);
+        __UUPSUpgradeable_init();
+
+        _entered_state = 1;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -114,7 +140,7 @@ contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
     /// @dev reentrancy guard
     uint8 internal constant _not_entered = 1;
     uint8 internal constant _entered = 2;
-    uint8 internal _entered_state = 1;
+    uint8 internal _entered_state;
     modifier nonreentrant() {
         require(_entered_state == _not_entered);
         _entered_state = _entered;
@@ -840,7 +866,7 @@ contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
         );
         require(
             unlock_time <= block.timestamp + MAXTIME,
-            "Voting lock can be 4 years max"
+            "Voting lock can be 2 years max"
         );
 
         ++tokenId;
@@ -918,7 +944,7 @@ contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
         require(unlock_time > _locked.end, "Can only increase lock duration");
         require(
             unlock_time <= block.timestamp + MAXTIME,
-            "Voting lock can be 4 years max"
+            "Voting lock can be 2 years max"
         );
 
         _deposit_for(
@@ -1215,6 +1241,56 @@ contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
         _deposit_for(_to, value0, end, _locked1, DepositType.MERGE_TYPE);
     }
 
+    function split(
+        uint _from,
+        uint _amount
+    ) external returns (uint _tokenId1, uint _tokenId2) {
+        address msgSender = msg.sender;
+
+        require(_isApprovedOrOwner(msgSender, _from));
+        require(attachments[_from] == 0 && !voted[_from], "attached");
+        require(_amount > 0, "Zero Split");
+
+        // burn old NFT
+        LockedBalance memory _locked = locked[_from];
+        int128 value = _locked.amount;
+        locked[_from] = LockedBalance(0, 0);
+        _checkpoint(_from, _locked, LockedBalance(0, 0));
+        _burn(_from);
+
+        // set max lock on new NFTs
+        _locked.end = block.timestamp + MAXTIME;
+
+        // split and mint new NFTs
+        int128 _splitAmount = int128(uint128(_amount));
+        _locked.amount = value - _splitAmount; // already checks for underflow here in ^0.8.0
+        _tokenId1 = _createSplitNFT(msgSender, _locked);
+
+        _locked.amount = _splitAmount;
+        _tokenId2 = _createSplitNFT(msgSender, _locked);
+
+        emit Split(
+            _from,
+            _tokenId1,
+            _tokenId2,
+            msgSender,
+            uint(uint128(locked[_tokenId1].amount)),
+            uint(uint128(_splitAmount)),
+            _locked.end,
+            block.timestamp
+        );
+    }
+
+    function _createSplitNFT(
+        address _to,
+        LockedBalance memory _newLocked
+    ) private returns (uint256 _tokenId) {
+        _tokenId = ++tokenId;
+        _mint(_to, _tokenId);
+        locked[_tokenId] = _newLocked;
+        _checkpoint(_tokenId, LockedBalance(0, 0), _newLocked);
+    }
+
     /*///////////////////////////////////////////////////////////////
                             DAO VOTING STORAGE
     //////////////////////////////////////////////////////////////*/
@@ -1509,4 +1585,8 @@ contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
         );
         return _delegate(signatory, delegatee);
     }
+
+    function _authorizeUpgrade(
+        address newImplementation
+    ) internal override onlyOwner {}
 }

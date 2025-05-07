@@ -2,27 +2,30 @@
 pragma solidity ^0.8.23;
 
 import "./interfaces/IKitten.sol";
+import "openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
+import "openzeppelin-contracts-upgradeable/contracts/access/Ownable2StepUpgradeable.sol";
 
-contract Kitten is IKitten {
+contract Kitten is IKitten, UUPSUpgradeable, Ownable2StepUpgradeable {
     string public constant name = "Kitten";
     string public constant symbol = "KITTEN";
     uint8 public constant decimals = 18;
-    uint public totalSupply = 0;
+    uint public totalSupply;
 
     mapping(address => uint) public balanceOf;
     mapping(address => mapping(address => uint)) public allowance;
 
     bool public initialMinted;
     address public minter;
-    address public redemptionReceiver;
-    address public merkleClaim;
 
     event Transfer(address indexed from, address indexed to, uint value);
     event Approval(address indexed owner, address indexed spender, uint value);
 
-    constructor() {
+    function initialize() public initializer {
         minter = msg.sender;
         _mint(msg.sender, 0);
+
+        __UUPSUpgradeable_init();
+        __Ownable_init(msg.sender);
     }
 
     // No checks as its meant to be once off to set minting rights to BaseV1 Minter
@@ -31,20 +34,8 @@ contract Kitten is IKitten {
         minter = _minter;
     }
 
-    function setRedemptionReceiver(address _receiver) external {
-        require(msg.sender == minter);
-        redemptionReceiver = _receiver;
-    }
-
-    function setMerkleClaim(address _merkleClaim) external {
-        require(msg.sender == minter);
-        merkleClaim = _merkleClaim;
-    }
-
-    // Initial mint: total 100,000 KITTEN
-    // 10,000 for "Genesis" liquidity pools
-    // 5,000 for liquid team allocation (excludes the veNFT)
-    // 25,000 for future partners/grants
+    // Initial mint:
+    // total = 1,000,000,000 KITTEN
     function initialMint(address _recipient, uint256 _amount) external {
         require(msg.sender == minter && !initialMinted);
         initialMinted = true;
@@ -101,9 +92,7 @@ contract Kitten is IKitten {
         return true;
     }
 
-    function claim(address account, uint amount) external returns (bool) {
-        require(msg.sender == redemptionReceiver || msg.sender == merkleClaim);
-        _mint(account, amount);
-        return true;
-    }
+    function _authorizeUpgrade(
+        address newImplementation
+    ) internal override onlyOwner {}
 }

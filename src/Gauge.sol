@@ -126,6 +126,17 @@ contract Gauge is IGauge {
         _unlocked = 1;
     }
 
+    mapping(uint _blockNumber => mapping(address _user => bool)) userBlockLocked; // 1 action per block, eg deposit or withdraw
+
+    modifier actionLock() {
+        require(
+            userBlockLocked[block.number][msg.sender] == false,
+            "Action Locked"
+        );
+        userBlockLocked[block.number][msg.sender] = true;
+        _;
+    }
+
     function claimFees() external lock returns (uint claimed0, uint claimed1) {
         return _claimFees();
     }
@@ -600,7 +611,7 @@ contract Gauge is IGauge {
         deposit(IERC20(stake).balanceOf(msg.sender), tokenId);
     }
 
-    function deposit(uint amount, uint tokenId) public lock {
+    function deposit(uint amount, uint tokenId) public lock actionLock {
         require(amount > 0);
         _updateRewardForAllTokens();
 
@@ -644,7 +655,7 @@ contract Gauge is IGauge {
         withdrawToken(amount, tokenId);
     }
 
-    function withdrawToken(uint amount, uint tokenId) public lock {
+    function withdrawToken(uint amount, uint tokenId) public lock actionLock {
         _updateRewardForAllTokens();
 
         totalSupply -= amount;

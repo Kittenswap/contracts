@@ -10,8 +10,8 @@ import "./interfaces/IVotingEscrow.sol";
 
 // Bribes pay out rewards for a given pool based on the votes that were received from the user (goes hand in hand with Voter.vote())
 contract ExternalBribe is IBribe {
-    address public immutable voter; // only voter can modify balances (since it only happens on vote())
-    address public immutable _ve; // 天使のたまご
+    address public immutable voter;
+    address public immutable _ve;
 
     uint internal constant DURATION = 7 days; // rewards are released over the voting period
     uint internal constant MAX_REWARD_TOKENS = 16;
@@ -48,8 +48,15 @@ contract ExternalBribe is IBribe {
     /// @notice The number of checkpoints
     uint public supplyNumCheckpoints;
 
+    /// @notice A checkpoint for marking balance
+    struct RewardCheckpoint {
+        uint timestamp;
+        uint balance;
+    }
+
     event Deposit(address indexed from, uint tokenId, uint amount);
     event Withdraw(address indexed from, uint tokenId, uint amount);
+
     event NotifyReward(
         address indexed from,
         address indexed reward,
@@ -239,6 +246,12 @@ contract ExternalBribe is IBribe {
         }
     }
 
+    struct PrevData {
+        uint _prevTs;
+        uint _prevBal;
+        uint _prevSupply;
+    }
+
     function earned(address token, uint tokenId) public view returns (uint) {
         uint _startTimestamp = lastEarn[token][tokenId];
         if (numCheckpoints[tokenId] == 0) {
@@ -250,39 +263,54 @@ contract ExternalBribe is IBribe {
 
         uint reward = 0;
         // you only earn once per epoch (after it's over)
-        Checkpoint memory prevRewards; // reuse struct to avoid stack too deep
+        RewardCheckpoint memory prevRewards;
         prevRewards.timestamp = _bribeStart(_startTimestamp);
-        uint _prevSupply = 1;
+
+        PrevData memory _prev;
+        _prev._prevSupply = 1;
 
         if (_endIndex > 0) {
             for (uint i = _startIndex; i <= _endIndex - 1; i++) {
-                Checkpoint memory cp0 = checkpoints[tokenId][i];
-                uint _nextEpochStart = _bribeStart(cp0.timestamp);
+                _prev._prevTs = checkpoints[tokenId][i].timestamp;
+                _prev._prevBal = checkpoints[tokenId][i].balanceOf;
+
+                uint _nextEpochStart = _bribeStart(_prev._prevTs);
                 // check that you've earned it
                 // this won't happen until a week has passed
                 if (_nextEpochStart > prevRewards.timestamp) {
-                    reward += prevRewards.balanceOf;
+                    reward += prevRewards.balance;
                 }
 
                 prevRewards.timestamp = _nextEpochStart;
-                _prevSupply = supplyCheckpoints[
+                _prev._prevSupply = supplyCheckpoints[
                     getPriorSupplyIndex(_nextEpochStart + DURATION)
                 ].supply;
-                prevRewards.balanceOf =
-                    (cp0.balanceOf *
+
+                prevRewards.balance =
+                    (_prev._prevBal *
                         tokenRewardsPerEpoch[token][_nextEpochStart]) /
-                    _prevSupply;
+                    _prev._prevSupply;
             }
         }
 
-        Checkpoint memory cp = checkpoints[tokenId][_endIndex];
-        uint _lastEpochStart = _bribeStart(cp.timestamp);
+        Checkpoint memory _cp0 = checkpoints[tokenId][_endIndex];
+        (_prev._prevTs, _prev._prevBal) = (_cp0.timestamp, _cp0.balanceOf);
+
+        uint _lastEpochStart = _bribeStart(_prev._prevTs);
         uint _lastEpochEnd = _lastEpochStart + DURATION;
 
-        if (block.timestamp > _lastEpochEnd) {
+        if (
+            block.timestamp > _lastEpochEnd && _startTimestamp < _lastEpochEnd
+        ) {
+            SupplyCheckpoint memory _scp0 = supplyCheckpoints[
+                getPriorSupplyIndex(_lastEpochEnd)
+            ];
+            _prev._prevSupply = _scp0.supply;
+
             reward +=
-                (cp.balanceOf * tokenRewardsPerEpoch[token][_lastEpochStart]) /
-                supplyCheckpoints[getPriorSupplyIndex(_lastEpochEnd)].supply;
+                (_prev._prevBal *
+                    tokenRewardsPerEpoch[token][_lastEpochStart]) /
+                _prev._prevSupply;
         }
 
         return reward;

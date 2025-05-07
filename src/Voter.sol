@@ -13,12 +13,18 @@ import "./interfaces/IPairFactory.sol";
 import "./interfaces/IVoter.sol";
 import "./interfaces/IVotingEscrow.sol";
 
-contract Voter is IVoter {
-    address public immutable _ve; // the ve token that governs these contracts
-    address public immutable factory; // the PairFactory
-    address internal immutable base;
-    address public immutable gaugefactory;
-    address public immutable bribefactory;
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
+
+import {IFactoryRegistry} from "./clAMM/core/interfaces/IFactoryRegistry.sol";
+import {ICLFactory} from "./clAMM/core/interfaces/ICLFactory.sol";
+import {ICLGaugeFactory} from "./clAMM/gauge/interfaces/ICLGaugeFactory.sol";
+import {ICLPool} from "./clAMM/core/interfaces/ICLPool.sol";
+
+contract Voter is IVoter, UUPSUpgradeable, Ownable2StepUpgradeable {
+    address public _ve; // the ve token that governs these contracts
+    address internal base;
+    IFactoryRegistry public factoryRegistry;
     uint internal constant DURATION = 7 days; // rewards are released over 7 days
     address public minter;
     address public governor; // should be set to an IGovernor
@@ -77,24 +83,26 @@ contract Voter is IVoter {
     event Detach(address indexed owner, address indexed gauge, uint tokenId);
     event Whitelisted(address indexed whitelister, address indexed token);
 
-    constructor(
+    function initialize(
         address __ve,
-        address _factory,
-        address _gauges,
-        address _bribes
-    ) {
+        address _factoryRegistry
+    ) external initializer {
         _ve = __ve;
-        factory = _factory;
         base = IVotingEscrow(__ve).token();
-        gaugefactory = _gauges;
-        bribefactory = _bribes;
+
         minter = msg.sender;
         governor = msg.sender;
         emergencyCouncil = msg.sender;
+        factoryRegistry = IFactoryRegistry(_factoryRegistry);
+
+        _unlocked = 1;
+
+        __Ownable_init(msg.sender);
+        __UUPSUpgradeable_init();
     }
 
     // simple re-entrancy check
-    uint internal _unlocked = 1;
+    uint internal _unlocked;
     modifier lock() {
         require(_unlocked == 1);
         _unlocked = 2;
@@ -111,7 +119,7 @@ contract Voter is IVoter {
         _;
     }
 
-    function initialize(address[] memory _tokens, address _minter) external {
+    function init(address[] memory _tokens, address _minter) external {
         require(msg.sender == minter);
         for (uint i = 0; i < _tokens.length; i++) {
             _whitelist(_tokens[i]);
@@ -253,34 +261,44 @@ contract Voter is IVoter {
         emit Whitelisted(msg.sender, _token);
     }
 
-    function createGauge(address _pool) external returns (address) {
+    function createGauge(
+        address _poolFactory,
+        address _pool
+    ) external returns (address) {
         require(gauges[_pool] == address(0x0), "exists");
         address[] memory allowedRewards = new address[](3);
         address[] memory internalRewards = new address[](2);
-        bool isPair = IPairFactory(factory).isPair(_pool);
-        address tokenA;
-        address tokenB;
+        bool isPair = IPairFactory(_poolFactory).isPair(_pool);
 
-        if (isPair) {
-            (tokenA, tokenB) = IPair(_pool).tokens();
-            allowedRewards[0] = tokenA;
-            allowedRewards[1] = tokenB;
-            internalRewards[0] = tokenA;
-            internalRewards[1] = tokenB;
+        {
+            address tokenA;
+            address tokenB;
 
-            if (base != tokenA && base != tokenB) {
-                allowedRewards[2] = base;
+            if (isPair) {
+                (tokenA, tokenB) = IPair(_pool).tokens();
+                allowedRewards[0] = tokenA;
+                allowedRewards[1] = tokenB;
+                internalRewards[0] = tokenA;
+                internalRewards[1] = tokenB;
+
+                if (base != tokenA && base != tokenB) {
+                    allowedRewards[2] = base;
+                }
+            }
+
+            if (msg.sender != governor) {
+                // gov can create for any pool, even non-Kittenswap pairs
+                require(isPair, "!_pool");
+                require(
+                    isWhitelisted[tokenA] && isWhitelisted[tokenB],
+                    "!whitelisted"
+                );
             }
         }
 
-        if (msg.sender != governor) {
-            // gov can create for any pool, even non-Velodrome pairs
-            require(isPair, "!_pool");
-            require(
-                isWhitelisted[tokenA] && isWhitelisted[tokenB],
-                "!whitelisted"
-            );
-        }
+        (address bribefactory, address gaugefactory) = IFactoryRegistry(
+            factoryRegistry
+        ).factoriesToPoolFactory(_poolFactory);
 
         address _internal_bribe = IBribeFactory(bribefactory)
             .createInternalBribe(internalRewards);
@@ -293,6 +311,76 @@ contract Voter is IVoter {
             _ve,
             isPair,
             allowedRewards
+        );
+
+        IERC20(base).approve(_gauge, type(uint).max);
+        internal_bribes[_gauge] = _internal_bribe;
+        external_bribes[_gauge] = _external_bribe;
+        gauges[_pool] = _gauge;
+        poolForGauge[_gauge] = _pool;
+        isGauge[_gauge] = true;
+        isAlive[_gauge] = true;
+        _updateFor(_gauge);
+        pools.push(_pool);
+        emit GaugeCreated(
+            _gauge,
+            msg.sender,
+            _internal_bribe,
+            _external_bribe,
+            _pool
+        );
+        return _gauge;
+    }
+
+    function createCLGauge(
+        address _poolFactory,
+        address _pool
+    ) external returns (address) {
+        require(gauges[_pool] == address(0x0), "exists");
+        address[] memory allowedRewards = new address[](3);
+        address[] memory internalRewards = new address[](2);
+        bool isPool = ICLFactory(_poolFactory).isPool(_pool);
+
+        {
+            address tokenA;
+            address tokenB;
+
+            if (isPool) {
+                tokenA = ICLPool(_pool).token0();
+                tokenB = ICLPool(_pool).token1();
+                allowedRewards[0] = tokenA;
+                allowedRewards[1] = tokenB;
+                internalRewards[0] = tokenA;
+                internalRewards[1] = tokenB;
+
+                if (base != tokenA && base != tokenB) {
+                    allowedRewards[2] = base;
+                }
+            }
+
+            if (msg.sender != governor) {
+                // gov can create for any pool, even non-Kittenswap pairs
+                require(isPool, "!_pool");
+                require(
+                    isWhitelisted[tokenA] && isWhitelisted[tokenB],
+                    "!whitelisted"
+                );
+            }
+        }
+
+        (address bribefactory, address gaugefactory) = IFactoryRegistry(
+            factoryRegistry
+        ).factoriesToPoolFactory(_poolFactory);
+
+        address _internal_bribe = IBribeFactory(bribefactory)
+            .createInternalBribe(internalRewards);
+        address _external_bribe = IBribeFactory(bribefactory)
+            .createExternalBribe(allowedRewards);
+        address _gauge = ICLGaugeFactory(gaugefactory).createGauge(
+            _pool,
+            _internal_bribe,
+            base,
+            isPool
         );
 
         IERC20(base).approve(_gauge, type(uint).max);
@@ -498,4 +586,8 @@ contract Voter is IVoter {
         );
         require(success && (data.length == 0 || abi.decode(data, (bool))));
     }
+
+    function _authorizeUpgrade(
+        address newImplementation
+    ) internal override onlyOwner {}
 }

@@ -6,6 +6,9 @@ import "./interfaces/IERC20.sol";
 import "./interfaces/IRewardsDistributor.sol";
 import "./interfaces/IVotingEscrow.sol";
 
+import "openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
+import "openzeppelin-contracts-upgradeable/contracts/access/Ownable2StepUpgradeable.sol";
+
 /*
 
 @title Curve Fee Distribution modified for ve(3,3) emissions
@@ -14,7 +17,11 @@ import "./interfaces/IVotingEscrow.sol";
 
 */
 
-contract RewardsDistributor is IRewardsDistributor {
+contract RewardsDistributor is
+    IRewardsDistributor,
+    UUPSUpgradeable,
+    Ownable2StepUpgradeable
+{
     event CheckpointToken(uint time, uint tokens);
 
     event Claimed(uint tokenId, uint amount, uint claim_epoch, uint max_epoch);
@@ -37,7 +44,7 @@ contract RewardsDistributor is IRewardsDistributor {
 
     address public depositor;
 
-    constructor(address _voting_escrow) {
+    function initialize(address _voting_escrow) external initializer {
         uint _t = (block.timestamp / WEEK) * WEEK;
         start_time = _t;
         last_token_time = _t;
@@ -47,6 +54,9 @@ contract RewardsDistributor is IRewardsDistributor {
         voting_escrow = _voting_escrow;
         depositor = msg.sender;
         require(IERC20(_token).approve(_voting_escrow, type(uint).max));
+
+        __Ownable_init(msg.sender);
+        __UUPSUpgradeable_init();
     }
 
     function timestamp() external view returns (uint) {
@@ -394,4 +404,8 @@ contract RewardsDistributor is IRewardsDistributor {
         require(msg.sender == depositor);
         depositor = _depositor;
     }
+
+    function _authorizeUpgrade(
+        address newImplementation
+    ) internal override onlyOwner {}
 }
