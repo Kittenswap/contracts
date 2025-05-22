@@ -1261,7 +1261,7 @@ contract VotingEscrow is
         _burn(_from);
 
         // set max lock on new NFTs
-        _locked.end = block.timestamp + MAXTIME;
+        _locked.end = ((block.timestamp + MAXTIME) / WEEK) * WEEK;
 
         // split and mint new NFTs
         int128 _splitAmount = int128(uint128(_amount));

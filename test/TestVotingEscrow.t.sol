@@ -126,4 +126,24 @@ contract TestVotingEscrow is Base {
 
         vm.stopPrank();
     }
+
+    function testLockTimeRounding() public {
+        (uint tokenIdFrom, uint tokenId1, uint tokenId2) = testSplitVeKitten();
+
+        vm.startPrank(user1);
+
+        uint256 roundedMaxTime = ((block.timestamp + 2 * 365 days) / 1 weeks) *
+            1 weeks;
+
+        (, uint endTimeFrom) = veKitten.locked(tokenIdFrom);
+        vm.assertEq(endTimeFrom, 0);
+
+        (, uint endTime1) = veKitten.locked(tokenId1);
+        vm.assertEq(endTime1, roundedMaxTime);
+
+        (, uint endTime2) = veKitten.locked(tokenId2);
+        vm.assertEq(endTime2, roundedMaxTime);
+
+        vm.stopPrank();
+    }
 }
