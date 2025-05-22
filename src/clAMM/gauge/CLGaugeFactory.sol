@@ -6,7 +6,6 @@ import {CLGauge} from "./CLGauge.sol";
 import {ICLPool} from "../core/interfaces/ICLPool.sol";
 
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-
 import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
 
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
@@ -42,6 +41,8 @@ contract CLGaugeFactory is
         address _kitten,
         bool _isPool
     ) external returns (address) {
+        require(msg.sender == voter, "Only voter can create gauge");
+
         CLGauge newGauge = CLGauge(
             address(
                 new ERC1967Proxy(
