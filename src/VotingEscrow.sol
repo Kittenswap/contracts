@@ -1249,11 +1249,13 @@ contract VotingEscrow is
 
         require(_isApprovedOrOwner(msgSender, _from));
         require(attachments[_from] == 0 && !voted[_from], "attached");
-        require(_amount > 0, "Zero Split");
 
         // burn old NFT
         LockedBalance memory _locked = locked[_from];
         int128 value = _locked.amount;
+
+        require(_amount > 0 && _amount < uint256(uint128(value)), "Zero Split");
+
         locked[_from] = LockedBalance(0, 0);
         _checkpoint(_from, _locked, LockedBalance(0, 0));
         _burn(_from);
