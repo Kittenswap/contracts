@@ -82,6 +82,12 @@ contract TestVotingEscrow is Base {
         vm.stopPrank();
     }
 
+    function testSplitVeKittenFromNotBurned() public {
+        (uint256 tokenIdFrom, , ) = testSplitVeKitten();
+
+        vm.assertEq(user1, veKitten.ownerOf(tokenIdFrom));
+    }
+
     function testSplitVeKittenGreaterThanLocked() public {
         testDistributeVeKitten();
 
@@ -143,6 +149,115 @@ contract TestVotingEscrow is Base {
 
         (, uint endTime2) = veKitten.locked(tokenId2);
         vm.assertEq(endTime2, roundedMaxTime);
+
+        vm.stopPrank();
+    }
+
+    /* Merge tests */
+    struct TestMergeVeKittenVars {
+        uint256 lockAmount1;
+        uint256 lockTime1;
+        uint256 tokenId1;
+        uint256 lockAmount2;
+        uint256 lockTime2;
+        uint256 tokenId2;
+    }
+    function testMergeVeKitten() public {
+        TestMergeVeKittenVars memory v;
+
+        _setUp();
+
+        vm.startPrank(deployer);
+
+        kitten.approve(address(veKitten), type(uint256).max);
+
+        v.lockAmount1 = (100_000_000 ether * vm.randomUint(1, 100)) / 100;
+        v.lockTime1 = (52 weeks * 2 * vm.randomUint(1, 100)) / 100;
+        v.tokenId1 = veKitten.create_lock_for(
+            v.lockAmount1,
+            v.lockTime1,
+            user1
+        );
+
+        v.lockAmount2 = (100_000_000 ether * vm.randomUint(1, 100)) / 100;
+        v.lockTime2 = (52 weeks * 2 * vm.randomUint(1, 100)) / 100;
+        v.tokenId2 = veKitten.create_lock_for(
+            v.lockAmount2,
+            v.lockTime2,
+            user1
+        );
+
+        vm.stopPrank();
+
+        vm.startPrank(user1);
+
+        veKitten.merge(v.tokenId1, v.tokenId2);
+
+        // should have cleared out tokenId1 but not burned veKitten for potential rewards claiming
+        (int128 amount1, uint end1) = veKitten.locked(v.tokenId1);
+        uint256 balanceOfTokenId1 = veKitten.balanceOfNFT(v.tokenId1);
+
+        vm.assertEq(amount1, 0);
+        vm.assertEq(end1, 0);
+        vm.assertEq(balanceOfTokenId1, 0);
+        vm.assertEq(user1, veKitten.ownerOf(v.tokenId1));
+
+        // should have added tokenId1 balances to tokenId2
+        (int128 amount2, uint end2) = veKitten.locked(v.tokenId2);
+        uint256 endTime = ((block.timestamp +
+            (v.lockTime1 > v.lockTime2 ? v.lockTime1 : v.lockTime2)) /
+            1 weeks) * 1 weeks;
+        uint256 balanceOfTokenId2 = veKitten.balanceOfNFT(v.tokenId2);
+
+        vm.assertEq(uint256(uint128(amount2)), v.lockAmount1 + v.lockAmount2);
+        vm.assertEq(end2, endTime);
+
+        vm.stopPrank();
+    }
+
+    /* Withdraw tests */
+    function testWithdrawVeKitten() public {
+        _setUp();
+
+        vm.startPrank(deployer);
+
+        kitten.approve(address(veKitten), type(uint256).max);
+
+        uint256 lockAmount1 = (100_000_000 ether * vm.randomUint(1, 100)) / 100;
+        uint256 lockTime1 = (52 weeks * 2 * vm.randomUint(1, 100)) / 100;
+        uint256 tokenId1 = veKitten.create_lock_for(
+            lockAmount1,
+            lockTime1,
+            user1
+        );
+
+        vm.startPrank(user1);
+        vm.warp(block.timestamp + lockTime1);
+
+        uint256 kittenBalBefore = kitten.balanceOf(user1);
+        veKitten.withdraw(tokenId1);
+        uint256 kittenBalAfter = kitten.balanceOf(user1);
+
+        // should clear out the tokenId1 but not burn veKitten
+        (int128 amount1, uint end1) = veKitten.locked(tokenId1);
+
+        vm.assertEq(
+            veKitten.balanceOfNFT(tokenId1),
+            0,
+            "should have 0 voting power"
+        );
+        vm.assertEq(amount1, 0, "should have 0 locked amount");
+        vm.assertGt(block.timestamp, end1, "should have expired");
+        vm.assertEq(
+            user1,
+            veKitten.ownerOf(tokenId1),
+            "should still be owner of veKitten"
+        );
+        vm.assertEq(
+            lockAmount1,
+            kittenBalAfter - kittenBalBefore,
+            "should get unlocked kitten"
+        );
 
         vm.stopPrank();
     }

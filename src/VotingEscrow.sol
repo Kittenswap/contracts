@@ -977,9 +977,6 @@ contract VotingEscrow is
 
         assert(IERC20(token).transfer(msg.sender, value));
 
-        // Burn the NFT
-        _burn(_tokenId);
-
         emit Withdraw(msg.sender, _tokenId, value, block.timestamp);
         emit Supply(supply_before, supply_before - value);
     }
@@ -1237,7 +1234,6 @@ contract VotingEscrow is
 
         locked[_from] = LockedBalance(0, 0);
         _checkpoint(_from, _locked0, LockedBalance(0, 0));
-        _burn(_from);
         _deposit_for(_to, value0, end, _locked1, DepositType.MERGE_TYPE);
     }
 
@@ -1258,7 +1254,6 @@ contract VotingEscrow is
 
         locked[_from] = LockedBalance(0, 0);
         _checkpoint(_from, _locked, LockedBalance(0, 0));
-        _burn(_from);
 
         // set max lock on new NFTs
         _locked.end = ((block.timestamp + MAXTIME) / WEEK) * WEEK;

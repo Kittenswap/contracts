@@ -84,12 +84,9 @@ contract Base is Test {
         IWHYPE9(payable(0x5555555555555555555555555555555555555555));
 
     /* users */
-    address user1 =
-        address(uint160(uint256(keccak256(abi.encodePacked("user1")))));
-    address user2 =
-        address(uint160(uint256(keccak256(abi.encodePacked("user2")))));
-    address swapper =
-        address(uint160(uint256(keccak256(abi.encodePacked("swapper")))));
+    address user1 = vm.randomAddress();
+    address user2 = vm.randomAddress();
+    address swapper = vm.randomAddress();
 
     bool setUpDone;
 
