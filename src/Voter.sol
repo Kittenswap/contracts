@@ -214,7 +214,7 @@ contract Voter is IVoter, UUPSUpgradeable, Ownable2StepUpgradeable {
                 uint256 _poolWeight = (_weights[i] * _weight) /
                     _totalVoteWeight;
                 require(votes[_tokenId][_pool] == 0);
-                require(_poolWeight != 0);
+                if (_poolWeight == 0) continue;
                 _updateFor(_gauge);
 
                 poolVote[_tokenId].push(_pool);
