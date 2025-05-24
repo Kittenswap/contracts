@@ -153,6 +153,59 @@ contract TestVotingEscrow is Base {
         vm.stopPrank();
     }
 
+    function testApprovedSplitVeKitten()
+        public
+        returns (uint tokenIdFrom, uint tokenId1, uint tokenId2)
+    {
+        testDistributeVeKitten();
+
+        vm.startPrank(user1);
+
+        tokenIdFrom = veKitten.tokenOfOwnerByIndex(user1, 0);
+        (int128 lockedAmountFromBefore, ) = veKitten.locked(tokenIdFrom);
+
+        uint256 amount = uint256(uint128(lockedAmountFromBefore)) / 3;
+
+        address approvedUser = vm.randomAddress();
+        veKitten.approve(approvedUser, tokenIdFrom);
+
+        vm.stopPrank();
+
+        vm.startPrank(approvedUser);
+
+        (tokenId1, tokenId2) = veKitten.split(tokenIdFrom, amount);
+
+        vm.assertEq(veKitten.ownerOf(tokenId1), veKitten.ownerOf(tokenIdFrom));
+        vm.assertEq(veKitten.ownerOf(tokenId2), veKitten.ownerOf(tokenIdFrom));
+
+        vm.stopPrank();
+    }
+
+    function testRevertNotApprovedSplitVeKitten()
+        public
+        returns (uint tokenIdFrom, uint tokenId1, uint tokenId2)
+    {
+        testDistributeVeKitten();
+
+        vm.startPrank(user1);
+
+        tokenIdFrom = veKitten.tokenOfOwnerByIndex(user1, 0);
+        (int128 lockedAmountFromBefore, ) = veKitten.locked(tokenIdFrom);
+
+        uint256 amount = uint256(uint128(lockedAmountFromBefore)) / 3;
+
+        vm.stopPrank();
+
+        address approvedUser = vm.randomAddress();
+
+        vm.startPrank(approvedUser);
+
+        vm.expectRevert();
+        (tokenId1, tokenId2) = veKitten.split(tokenIdFrom, amount);
+
+        vm.stopPrank();
+    }
+
     /* Merge tests */
     struct TestMergeVeKittenVars {
         uint256 lockAmount1;

@@ -1246,6 +1246,8 @@ contract VotingEscrow is
         require(_isApprovedOrOwner(msgSender, _from));
         require(attachments[_from] == 0 && !voted[_from], "attached");
 
+        address tokenIdOwner = ownerOf(_from);
+
         // burn old NFT
         LockedBalance memory _locked = locked[_from];
         int128 value = _locked.amount;
@@ -1260,11 +1262,11 @@ contract VotingEscrow is
 
         // split and mint new NFTs
         int128 _splitAmount = int128(uint128(_amount));
-        _locked.amount = value - _splitAmount; // already checks for underflow here in ^0.8.0
-        _tokenId1 = _createSplitNFT(msgSender, _locked);
+        _locked.amount = value - _splitAmount;
+        _tokenId1 = _createSplitNFT(tokenIdOwner, _locked);
 
         _locked.amount = _splitAmount;
-        _tokenId2 = _createSplitNFT(msgSender, _locked);
+        _tokenId2 = _createSplitNFT(tokenIdOwner, _locked);
 
         emit Split(
             _from,
