@@ -322,6 +322,8 @@ contract TestVotingEscrow is Base {
             user1
         );
 
+        vm.stopPrank();
+
         vm.startPrank(user1);
         vm.warp(block.timestamp + lockTime1);
 
@@ -349,6 +351,83 @@ contract TestVotingEscrow is Base {
             kittenBalAfter - kittenBalBefore,
             "should get unlocked kitten"
         );
+
+        vm.stopPrank();
+    }
+
+    function testApprovedWithdrawVeKitten() public {
+        _setUp();
+
+        vm.startPrank(deployer);
+
+        kitten.approve(address(veKitten), type(uint256).max);
+
+        uint256 lockAmount1 = (100_000_000 ether * vm.randomUint(1, 100)) / 100;
+        uint256 lockTime1 = (52 weeks * 2 * vm.randomUint(1, 100)) / 100;
+        uint256 tokenId1 = veKitten.create_lock_for(
+            lockAmount1,
+            lockTime1,
+            user1
+        );
+
+        vm.stopPrank();
+
+        vm.startPrank(user1);
+
+        address approvedUser = vm.randomAddress();
+        veKitten.approve(approvedUser, tokenId1);
+
+        vm.stopPrank();
+
+        vm.startPrank(approvedUser);
+        vm.warp(block.timestamp + lockTime1);
+
+        uint256 kittenBalBefore = kitten.balanceOf(approvedUser);
+        veKitten.withdraw(tokenId1);
+        uint256 kittenBalAfter = kitten.balanceOf(approvedUser);
+
+        vm.assertEq(
+            user1,
+            veKitten.ownerOf(tokenId1),
+            "should still be owner of veKitten"
+        );
+        vm.assertEq(
+            lockAmount1,
+            kittenBalAfter - kittenBalBefore,
+            "should get unlocked kitten"
+        );
+
+        vm.stopPrank();
+    }
+
+    function testRevertNotApprovedWithdrawVeKitten() public {
+        _setUp();
+
+        vm.startPrank(deployer);
+
+        kitten.approve(address(veKitten), type(uint256).max);
+
+        uint256 lockAmount1 = (100_000_000 ether * vm.randomUint(1, 100)) / 100;
+        uint256 lockTime1 = (52 weeks * 2 * vm.randomUint(1, 100)) / 100;
+        uint256 tokenId1 = veKitten.create_lock_for(
+            lockAmount1,
+            lockTime1,
+            user1
+        );
+
+        vm.stopPrank();
+
+        vm.startPrank(user1);
+
+        address randomUser = vm.randomAddress();
+
+        vm.stopPrank();
+
+        vm.startPrank(randomUser);
+        vm.warp(block.timestamp + lockTime1);
+
+        vm.expectRevert();
+        veKitten.withdraw(tokenId1);
 
         vm.stopPrank();
     }
