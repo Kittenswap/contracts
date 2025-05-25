@@ -36,6 +36,7 @@ import {Base} from "test/base/Base.t.sol";
 import {TestPairFactory} from "test/TestPairFactory.t.sol";
 import {TestVotingEscrow} from "test/TestVotingEscrow.t.sol";
 import {TestCLGauge} from "test/TestCLGauge.t.sol";
+import {ProtocolTimeLibrary} from "src/clAMM/libraries/ProtocolTimeLibrary.sol";
 
 interface ICLFactoryExtended is ICLFactory {
     function setVoter(address _voter) external;
@@ -112,6 +113,8 @@ contract TestVoter is TestPairFactory, TestVotingEscrow, TestCLGauge {
         uint256[] memory weightsListBefore = new uint256[](len);
         uint256[] memory votesListBefore = new uint256[](len);
 
+        tokenId = veKitten.tokenOfOwnerByIndex(user1, 0);
+
         for (uint256 i; i < len; i++) {
             weightsListBefore[i] = voter.weights(poolList[i]);
             votesListBefore[i] = voter.votes(tokenId, poolList[i]);
@@ -122,7 +125,9 @@ contract TestVoter is TestPairFactory, TestVotingEscrow, TestCLGauge {
             totalWeight += weightList[i];
         }
 
-        tokenId = veKitten.tokenOfOwnerByIndex(user1, 0);
+        uint256 voteTime = ProtocolTimeLibrary.epochVoteStart(block.timestamp) +
+            vm.randomUint(1, 1 weeks - 2 hours);
+        vm.warp(voteTime);
 
         voter.vote(tokenId, voteList, weightList);
 
@@ -158,6 +163,8 @@ contract TestVoter is TestPairFactory, TestVotingEscrow, TestCLGauge {
         uint256[] memory weightsListBefore = new uint256[](len);
         uint256[] memory votesListBefore = new uint256[](len);
 
+        tokenId = veKitten.tokenOfOwnerByIndex(user1, 0);
+
         for (uint256 i; i < len; i++) {
             weightsListBefore[i] = voter.weights(poolList[i]);
             votesListBefore[i] = voter.votes(tokenId, poolList[i]);
@@ -168,9 +175,120 @@ contract TestVoter is TestPairFactory, TestVotingEscrow, TestCLGauge {
             totalWeight += weightList[i];
         }
 
-        tokenId = veKitten.tokenOfOwnerByIndex(user1, 0);
+        vm.expectRevert();
+        voter.vote(tokenId, voteList, weightList);
+
+        vm.stopPrank();
+    }
+
+    function testRevertVoteOnStartEpochOneHour() public {
+        testCreateGauge();
+
+        vm.startPrank(user1);
+
+        uint256 len = poolList.length;
+
+        address[] memory voteList = new address[](len);
+        uint256[] memory weightList = new uint256[](len);
+        uint256 totalWeight;
+
+        uint256[] memory weightsListBefore = new uint256[](len);
+        uint256[] memory votesListBefore = new uint256[](len);
+
+        uint256 tokenId = veKitten.tokenOfOwnerByIndex(user1, 0);
+
+        for (uint256 i; i < len; i++) {
+            weightsListBefore[i] = voter.weights(poolList[i]);
+            votesListBefore[i] = voter.votes(tokenId, poolList[i]);
+
+            voteList[i] = poolList[i];
+            weightList[i] = vm.randomUint(100, 1000);
+
+            totalWeight += weightList[i];
+        }
+
+        uint256 voteTime = ProtocolTimeLibrary.epochStart(block.timestamp) +
+            vm.randomUint(1, 1 hours - 1);
+        vm.warp(voteTime);
 
         vm.expectRevert();
+        voter.vote(tokenId, voteList, weightList);
+
+        vm.stopPrank();
+    }
+
+    function testRevertVoteOnEndEpochOneHour() public {
+        testCreateGauge();
+
+        vm.startPrank(user1);
+
+        uint256 len = poolList.length;
+
+        address[] memory voteList = new address[](len);
+        uint256[] memory weightList = new uint256[](len);
+        uint256 totalWeight;
+
+        uint256[] memory weightsListBefore = new uint256[](len);
+        uint256[] memory votesListBefore = new uint256[](len);
+
+        uint256 tokenId = veKitten.tokenOfOwnerByIndex(user1, 0);
+
+        for (uint256 i; i < len; i++) {
+            weightsListBefore[i] = voter.weights(poolList[i]);
+            votesListBefore[i] = voter.votes(tokenId, poolList[i]);
+
+            voteList[i] = poolList[i];
+            weightList[i] = vm.randomUint(100, 1000);
+
+            totalWeight += weightList[i];
+        }
+
+        uint256 voteTime = ProtocolTimeLibrary.epochVoteEnd(block.timestamp) +
+            vm.randomUint(1, 1 hours - 1);
+        vm.warp(voteTime);
+
+        vm.expectRevert();
+        voter.vote(tokenId, voteList, weightList);
+
+        vm.stopPrank();
+    }
+
+    function testWhitelistedVoteOnEndEpochOneHour() public {
+        testCreateGauge();
+
+        vm.startPrank(user1);
+
+        uint256 len = poolList.length;
+
+        address[] memory voteList = new address[](len);
+        uint256[] memory weightList = new uint256[](len);
+        uint256 totalWeight;
+
+        uint256[] memory weightsListBefore = new uint256[](len);
+        uint256[] memory votesListBefore = new uint256[](len);
+
+        uint256 tokenId = veKitten.tokenOfOwnerByIndex(user1, 0);
+
+        for (uint256 i; i < len; i++) {
+            weightsListBefore[i] = voter.weights(poolList[i]);
+            votesListBefore[i] = voter.votes(tokenId, poolList[i]);
+
+            voteList[i] = poolList[i];
+            weightList[i] = vm.randomUint(100, 1000);
+
+            totalWeight += weightList[i];
+        }
+
+        vm.stopPrank();
+        vm.startPrank(deployer);
+        voter.setWhitelistTokenId(tokenId, true);
+        vm.stopPrank();
+        vm.startPrank(user1);
+
+        uint256 voteTime = ProtocolTimeLibrary.epochVoteEnd(block.timestamp) +
+            vm.randomUint(1, 1 hours - 1);
+        vm.warp(voteTime);
+
         voter.vote(tokenId, voteList, weightList);
 
         vm.stopPrank();
@@ -225,5 +343,86 @@ contract TestVoter is TestPairFactory, TestVotingEscrow, TestCLGauge {
         vm.warp(block.timestamp + 1 weeks);
 
         voter.poke(tokenId);
+    }
+
+    /* Set governor tests  */
+    function testSetGovernor() public {
+        _setUp();
+
+        vm.startPrank(deployer);
+
+        voter.setGovernor(multisig);
+
+        vm.stopPrank();
+
+        address newGovernor = vm.randomAddress();
+
+        vm.startPrank(multisig);
+
+        voter.setGovernor(newGovernor);
+
+        vm.stopPrank();
+    }
+
+    function testOwnerSetGovernor() public {
+        _setUp();
+
+        vm.startPrank(deployer);
+
+        voter.setGovernor(multisig);
+
+        vm.stopPrank();
+    }
+
+    function testRevertSetGovernor() public {
+        _setUp();
+
+        address notGovernorOrOwner = vm.randomAddress();
+        vm.startPrank(notGovernorOrOwner);
+
+        address newGovernor = vm.randomAddress();
+        vm.expectRevert();
+        voter.setGovernor(newGovernor);
+
+        vm.stopPrank();
+    }
+
+    /* Set whitelist tokenId tests  */
+    function testSetWhitelistTokenId() public {
+        _setUp();
+
+        uint256 tokenId = vm.randomUint(1, 10_000);
+
+        vm.startPrank(deployer);
+
+        address newGovernor = multisig;
+        voter.setGovernor(newGovernor);
+
+        // owner set whitelist tokenId
+        voter.setWhitelistTokenId(tokenId, true);
+        voter.setWhitelistTokenId(tokenId, false);
+
+        vm.stopPrank();
+
+        vm.startPrank(newGovernor);
+
+        // governor set whitelist tokenId
+        voter.setWhitelistTokenId(tokenId, true);
+        voter.setWhitelistTokenId(tokenId, false);
+
+        vm.stopPrank();
+    }
+
+    function testRevertSetWhitelistTokenId() public {
+        _setUp();
+
+        address notGovernorOrOwner = vm.randomAddress();
+        vm.startPrank(notGovernorOrOwner);
+
+        uint256 tokenId = vm.randomUint(1, 10_000);
+        vm.expectRevert();
+        voter.setWhitelistTokenId(tokenId, true);
+
+        vm.stopPrank();
     }
 }

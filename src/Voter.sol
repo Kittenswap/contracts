@@ -20,6 +20,7 @@ import {IFactoryRegistry} from "./clAMM/core/interfaces/IFactoryRegistry.sol";
 import {ICLFactory} from "./clAMM/core/interfaces/ICLFactory.sol";
 import {ICLGaugeFactory} from "./clAMM/gauge/interfaces/ICLGaugeFactory.sol";
 import {ICLPool} from "./clAMM/core/interfaces/ICLPool.sol";
+import {ProtocolTimeLibrary} from "./clAMM/libraries/ProtocolTimeLibrary.sol";
 
 contract Voter is IVoter, UUPSUpgradeable, Ownable2StepUpgradeable {
     address public _ve; // the ve token that governs these contracts
@@ -45,6 +46,7 @@ contract Voter is IVoter, UUPSUpgradeable, Ownable2StepUpgradeable {
     mapping(address => bool) public isGauge;
     mapping(address => bool) public isWhitelisted;
     mapping(address => bool) public isAlive;
+    mapping(uint256 tokenId => bool) public isWhitelistedTokenId;
 
     event GaugeCreated(
         address indexed gauge,
@@ -128,7 +130,7 @@ contract Voter is IVoter, UUPSUpgradeable, Ownable2StepUpgradeable {
     }
 
     function setGovernor(address _governor) public {
-        require(msg.sender == governor);
+        require(msg.sender == governor || msg.sender == owner());
         governor = _governor;
     }
 
@@ -244,9 +246,18 @@ contract Voter is IVoter, UUPSUpgradeable, Ownable2StepUpgradeable {
         address[] calldata _poolVote,
         uint256[] calldata _weights
     ) external onlyNewEpoch(tokenId) {
+        uint256 blockTimestamp = block.timestamp;
+        require(
+            blockTimestamp > ProtocolTimeLibrary.epochVoteStart(blockTimestamp),
+            "Not open for voting"
+        );
+        if (blockTimestamp > ProtocolTimeLibrary.epochVoteEnd(blockTimestamp)) {
+            require(isWhitelistedTokenId[tokenId], "Not whitelisted");
+        }
+
         require(IVotingEscrow(_ve).isApprovedOrOwner(msg.sender, tokenId));
         require(_poolVote.length == _weights.length);
-        lastVoted[tokenId] = block.timestamp;
+        lastVoted[tokenId] = blockTimestamp;
         _vote(tokenId, _poolVote, _weights);
     }
 
@@ -259,6 +270,11 @@ contract Voter is IVoter, UUPSUpgradeable, Ownable2StepUpgradeable {
         require(!isWhitelisted[_token]);
         isWhitelisted[_token] = true;
         emit Whitelisted(msg.sender, _token);
+    }
+
+    function setWhitelistTokenId(uint256 _tokenId, bool _isWhitelisted) public {
+        require(msg.sender == governor || msg.sender == owner());
+        isWhitelistedTokenId[_tokenId] = _isWhitelisted;
     }
 
     function createGauge(
