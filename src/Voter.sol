@@ -85,6 +85,9 @@ contract Voter is IVoter, UUPSUpgradeable, Ownable2StepUpgradeable {
     event Detach(address indexed owner, address indexed gauge, uint tokenId);
     event Whitelisted(address indexed whitelister, address indexed token);
 
+    error GaugeNotAlive();
+    error NoGauge();
+
     function initialize(
         address __ve,
         address _factoryRegistry
@@ -135,7 +138,7 @@ contract Voter is IVoter, UUPSUpgradeable, Ownable2StepUpgradeable {
     }
 
     function setEmergencyCouncil(address _council) public {
-        require(msg.sender == emergencyCouncil);
+        require(msg.sender == emergencyCouncil || msg.sender == owner());
         emergencyCouncil = _council;
     }
 
@@ -211,6 +214,9 @@ contract Voter is IVoter, UUPSUpgradeable, Ownable2StepUpgradeable {
         for (uint i = 0; i < _poolCnt; i++) {
             address _pool = _poolVote[i];
             address _gauge = gauges[_pool];
+
+            if (_gauge == address(0)) revert NoGauge();
+            if (isAlive[_gauge] == false) revert GaugeNotAlive();
 
             if (isGauge[_gauge]) {
                 uint256 _poolWeight = (_weights[i] * _weight) /

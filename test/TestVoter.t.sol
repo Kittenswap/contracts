@@ -149,6 +149,87 @@ contract TestVoter is TestPairFactory, TestVotingEscrow, TestCLGauge {
         vm.stopPrank();
     }
 
+    function testRevertInvalidGaugeVote() public returns (uint256 tokenId) {
+        testCreateGauge();
+
+        vm.startPrank(user1);
+
+        uint256 len = poolList.length;
+
+        address[] memory voteList = new address[](len);
+        uint256[] memory weightList = new uint256[](len);
+        uint256 totalWeight;
+
+        uint256[] memory weightsListBefore = new uint256[](len);
+        uint256[] memory votesListBefore = new uint256[](len);
+
+        tokenId = veKitten.tokenOfOwnerByIndex(user1, 0);
+
+        for (uint256 i; i < len; i++) {
+            weightsListBefore[i] = voter.weights(poolList[i]);
+            votesListBefore[i] = voter.votes(tokenId, poolList[i]);
+
+            voteList[i] = poolList[i];
+            weightList[i] = vm.randomUint(100, 1000);
+
+            totalWeight += weightList[i];
+        }
+
+        voteList[0] = vm.randomAddress();
+
+        uint256 voteTime = ProtocolTimeLibrary.epochVoteStart(block.timestamp) +
+            vm.randomUint(1, 1 weeks - 2 hours);
+        vm.warp(voteTime);
+
+        vm.expectRevert();
+        voter.vote(tokenId, voteList, weightList);
+
+        vm.stopPrank();
+    }
+
+    function testRevertKilledGaugeVote() public returns (uint256 tokenId) {
+        testCreateGauge();
+
+        vm.startPrank(user1);
+
+        uint256 len = poolList.length;
+
+        address[] memory voteList = new address[](len);
+        uint256[] memory weightList = new uint256[](len);
+        uint256 totalWeight;
+
+        uint256[] memory weightsListBefore = new uint256[](len);
+        uint256[] memory votesListBefore = new uint256[](len);
+
+        tokenId = veKitten.tokenOfOwnerByIndex(user1, 0);
+
+        for (uint256 i; i < len; i++) {
+            weightsListBefore[i] = voter.weights(poolList[i]);
+            votesListBefore[i] = voter.votes(tokenId, poolList[i]);
+
+            voteList[i] = poolList[i];
+            weightList[i] = vm.randomUint(100, 1000);
+
+            totalWeight += weightList[i];
+        }
+
+        vm.stopPrank();
+
+        vm.startPrank(voter.emergencyCouncil());
+        voter.killGauge(voter.gauges(voteList[0]));
+        vm.stopPrank();
+
+        uint256 voteTime = ProtocolTimeLibrary.epochVoteStart(block.timestamp) +
+            vm.randomUint(1, 1 weeks - 2 hours);
+        vm.startPrank(user1);
+        vm.warp(voteTime);
+
+        vm.expectRevert();
+        voter.vote(tokenId, voteList, weightList);
+
+        vm.stopPrank();
+    }
+
     function testZeroTotalWeightVote() public returns (uint256 tokenId) {
         testCreateGauge();
 
@@ -422,6 +503,46 @@ contract TestVoter is TestPairFactory, TestVotingEscrow, TestCLGauge {
         uint256 tokenId = vm.randomUint(1, 10_000);
         vm.expectRevert();
         voter.setWhitelistTokenId(tokenId, true);
+
+        vm.stopPrank();
+    }
+
+    /* Set governor tests  */
+    function testSetEmergencyCouncil() public {
+        _setUp();
+
+        vm.startPrank(voter.emergencyCouncil());
+
+        address newEmergencyCouncil = vm.randomAddress();
+        voter.setEmergencyCouncil(newEmergencyCouncil);
+
+        vm.stopPrank();
+
+        vm.assertEq(newEmergencyCouncil, voter.emergencyCouncil());
+    }
+
+    function testOwnerSetEmergencyCouncil() public {
+        _setUp();
+
+        vm.startPrank(deployer);
+
+        address newEmergencyCouncil = vm.randomAddress();
+        voter.setEmergencyCouncil(newEmergencyCouncil);
+
+        vm.stopPrank();
+
+        vm.assertEq(newEmergencyCouncil, voter.emergencyCouncil());
+    }
+
+    function testRevertSetEmergencyCouncil() public {
+        _setUp();
+
+        address notEmergencyCouncilOrOwner = vm.randomAddress();
+        vm.startPrank(notEmergencyCouncilOrOwner);
+
+        address newEmergencyCouncil = vm.randomAddress();
+        vm.expectRevert();
+        voter.setEmergencyCouncil(newEmergencyCouncil);
 
         vm.stopPrank();
     }
