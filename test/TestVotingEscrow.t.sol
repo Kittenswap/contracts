@@ -268,6 +268,44 @@ contract TestVotingEscrow is Base {
         vm.stopPrank();
     }
 
+    function testSupplyNotChangeMergeVeKitten() public {
+        TestMergeVeKittenVars memory v;
+
+        _setUp();
+
+        vm.startPrank(deployer);
+
+        kitten.approve(address(veKitten), type(uint256).max);
+
+        v.lockAmount1 = (100_000_000 ether * vm.randomUint(1, 100)) / 100;
+        v.lockTime1 = (52 weeks * 2 * vm.randomUint(1, 100)) / 100;
+        v.tokenId1 = veKitten.create_lock_for(
+            v.lockAmount1,
+            v.lockTime1,
+            user1
+        );
+
+        v.lockAmount2 = (100_000_000 ether * vm.randomUint(1, 100)) / 100;
+        v.lockTime2 = (52 weeks * 2 * vm.randomUint(1, 100)) / 100;
+        v.tokenId2 = veKitten.create_lock_for(
+            v.lockAmount2,
+            v.lockTime2,
+            user1
+        );
+
+        vm.stopPrank();
+
+        vm.startPrank(user1);
+
+        uint256 supplyBefore = veKitten.supply();
+        veKitten.merge(v.tokenId1, v.tokenId2);
+        uint256 supplyAfter = veKitten.supply();
+
+        vm.assertEq(supplyBefore, supplyAfter);
+
+        vm.stopPrank();
+    }
+
     /* Withdraw tests */
     function testWithdrawVeKitten() public {
         _setUp();

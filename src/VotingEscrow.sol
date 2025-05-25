@@ -1234,6 +1234,7 @@ contract VotingEscrow is
 
         locked[_from] = LockedBalance(0, 0);
         _checkpoint(_from, _locked0, LockedBalance(0, 0));
+        supply -= value0;
         _deposit_for(_to, value0, end, _locked1, DepositType.MERGE_TYPE);
     }
 
