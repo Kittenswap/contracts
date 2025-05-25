@@ -306,6 +306,148 @@ contract TestVotingEscrow is Base {
         vm.stopPrank();
     }
 
+    function testApprovedMergeVeKitten() public {
+        TestMergeVeKittenVars memory v;
+
+        _setUp();
+
+        vm.startPrank(deployer);
+
+        kitten.approve(address(veKitten), type(uint256).max);
+
+        v.lockAmount1 = (100_000_000 ether * vm.randomUint(1, 100)) / 100;
+        v.lockTime1 = (52 weeks * 2 * vm.randomUint(1, 100)) / 100;
+        v.tokenId1 = veKitten.create_lock_for(
+            v.lockAmount1,
+            v.lockTime1,
+            user1
+        );
+
+        v.lockAmount2 = (100_000_000 ether * vm.randomUint(1, 100)) / 100;
+        v.lockTime2 = (52 weeks * 2 * vm.randomUint(1, 100)) / 100;
+        v.tokenId2 = veKitten.create_lock_for(
+            v.lockAmount2,
+            v.lockTime2,
+            user1
+        );
+
+        vm.stopPrank();
+
+        address approvedUser = vm.randomAddress();
+
+        vm.startPrank(user1);
+        veKitten.approve(approvedUser, v.tokenId1);
+        veKitten.approve(approvedUser, v.tokenId2);
+        vm.stopPrank();
+
+        vm.startPrank(approvedUser);
+
+        veKitten.merge(v.tokenId1, v.tokenId2);
+
+        // should have cleared out tokenId1 but not burned veKitten for potential rewards claiming
+        (int128 amount1, uint end1) = veKitten.locked(v.tokenId1);
+        uint256 balanceOfTokenId1 = veKitten.balanceOfNFT(v.tokenId1);
+
+        vm.assertEq(amount1, 0);
+        vm.assertEq(end1, 0);
+        vm.assertEq(balanceOfTokenId1, 0);
+        vm.assertEq(user1, veKitten.ownerOf(v.tokenId1));
+
+        // should have added tokenId1 balances to tokenId2
+        (int128 amount2, uint end2) = veKitten.locked(v.tokenId2);
+        uint256 endTime = ((block.timestamp +
+            (v.lockTime1 > v.lockTime2 ? v.lockTime1 : v.lockTime2)) /
+            1 weeks) * 1 weeks;
+        uint256 balanceOfTokenId2 = veKitten.balanceOfNFT(v.tokenId2);
+
+        vm.assertEq(uint256(uint128(amount2)), v.lockAmount1 + v.lockAmount2);
+        vm.assertEq(end2, endTime);
+
+        vm.stopPrank();
+    }
+
+    function testNotApprovedMergeVeKittenToken1() public {
+        TestMergeVeKittenVars memory v;
+
+        _setUp();
+
+        vm.startPrank(deployer);
+
+        kitten.approve(address(veKitten), type(uint256).max);
+
+        v.lockAmount1 = (100_000_000 ether * vm.randomUint(1, 100)) / 100;
+        v.lockTime1 = (52 weeks * 2 * vm.randomUint(1, 100)) / 100;
+        v.tokenId1 = veKitten.create_lock_for(
+            v.lockAmount1,
+            v.lockTime1,
+            user1
+        );
+
+        v.lockAmount2 = (100_000_000 ether * vm.randomUint(1, 100)) / 100;
+        v.lockTime2 = (52 weeks * 2 * vm.randomUint(1, 100)) / 100;
+        v.tokenId2 = veKitten.create_lock_for(
+            v.lockAmount2,
+            v.lockTime2,
+            user1
+        );
+
+        vm.stopPrank();
+
+        address approvedUser = vm.randomAddress();
+
+        vm.startPrank(user1);
+        veKitten.approve(approvedUser, v.tokenId2);
+        vm.stopPrank();
+
+        vm.startPrank(approvedUser);
+
+        vm.expectRevert();
+        veKitten.merge(v.tokenId1, v.tokenId2);
+
+        vm.stopPrank();
+    }
+
+    function testNotApprovedMergeVeKittenToken2() public {
+        TestMergeVeKittenVars memory v;
+
+        _setUp();
+
+        vm.startPrank(deployer);
+
+        kitten.approve(address(veKitten), type(uint256).max);
+
+        v.lockAmount1 = (100_000_000 ether * vm.randomUint(1, 100)) / 100;
+        v.lockTime1 = (52 weeks * 2 * vm.randomUint(1, 100)) / 100;
+        v.tokenId1 = veKitten.create_lock_for(
+            v.lockAmount1,
+            v.lockTime1,
+            user1
+        );
+
+        v.lockAmount2 = (100_000_000 ether * vm.randomUint(1, 100)) / 100;
+        v.lockTime2 = (52 weeks * 2 * vm.randomUint(1, 100)) / 100;
+        v.tokenId2 = veKitten.create_lock_for(
+            v.lockAmount2,
+            v.lockTime2,
+            user1
+        );
+
+        vm.stopPrank();
+
+        address approvedUser = vm.randomAddress();
+
+        vm.startPrank(user1);
+        veKitten.approve(approvedUser, v.tokenId1);
+        vm.stopPrank();
+
+        vm.startPrank(approvedUser);
+
+        vm.expectRevert();
+        veKitten.merge(v.tokenId1, v.tokenId2);
+
+        vm.stopPrank();
+    }
+
     /* Withdraw tests */
     function testWithdrawVeKitten() public {
         _setUp();
