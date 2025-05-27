@@ -286,6 +286,8 @@ contract ExternalBribe is IBribe {
                     getPriorSupplyIndex(_nextEpochStart + DURATION - 1)
                 ].supply;
 
+                if (_prev._prevSupply == 0) _prev._prevSupply = 1;
+
                 prevRewards.balance =
                     (_prev._prevBal *
                         tokenRewardsPerEpoch[token][_nextEpochStart]) /
@@ -306,6 +308,8 @@ contract ExternalBribe is IBribe {
                 getPriorSupplyIndex(_lastEpochEnd)
             ];
             _prev._prevSupply = _scp0.supply;
+
+            if (_prev._prevSupply == 0) _prev._prevSupply = 1;
 
             reward +=
                 (_prev._prevBal *
