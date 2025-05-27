@@ -546,4 +546,67 @@ contract TestVoter is TestPairFactory, TestVotingEscrow, TestCLGauge {
 
         vm.stopPrank();
     }
+
+    /* Kill gauge tests */
+    function testKillGauge() public {
+        testVote();
+
+        vm.warp(block.timestamp + 1 weeks);
+
+        minter.update_period();
+        voter.updateAll();
+
+        vm.startPrank(voter.emergencyCouncil());
+        for (uint i; i < clGaugeList.length; i++) {
+            address gauge = clGaugeList[i];
+            uint256 _claimable = voter.claimable(gauge);
+            uint256 minterBalBefore = kitten.balanceOf(address(minter));
+            voter.killGauge(gauge);
+            uint256 minterBalAfter = kitten.balanceOf(address(minter));
+
+            vm.assertEq(minterBalAfter - minterBalBefore, _claimable);
+            vm.assertTrue(voter.isAlive(gauge) == false);
+        }
+        vm.stopPrank();
+    }
+
+    function testRevertAlreadyDeadKillGauge() public {
+        testVote();
+
+        vm.warp(block.timestamp + 1 weeks);
+
+        minter.update_period();
+        voter.updateAll();
+
+        vm.startPrank(voter.emergencyCouncil());
+        for (uint i; i < clGaugeList.length; i++) {
+            address gauge = clGaugeList[i];
+            voter.killGauge(gauge);
+        }
+
+        for (uint i; i < clGaugeList.length; i++) {
+            address gauge = clGaugeList[i];
+            vm.expectRevert();
+            voter.killGauge(gauge);
+        }
+        vm.stopPrank();
+    }
+
+    function testRevertNotEmergencyCouncilKillGauge() public {
+        testVote();
+
+        vm.warp(block.timestamp + 1 weeks);
+
+        minter.update_period();
+        voter.updateAll();
+
+        vm.startPrank(vm.randomAddress());
+        for (uint i; i < clGaugeList.length; i++) {
+            address gauge = clGaugeList[i];
+            vm.expectRevert();
+            voter.killGauge(gauge);
+        }
+
+        vm.stopPrank();
+    }
 }

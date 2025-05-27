@@ -428,7 +428,9 @@ contract Voter is IVoter, UUPSUpgradeable, Ownable2StepUpgradeable {
         require(msg.sender == emergencyCouncil, "not emergency council");
         require(isAlive[_gauge], "gauge already dead");
         isAlive[_gauge] = false;
+        uint256 _claimable = claimable[_gauge];
         claimable[_gauge] = 0;
+        if (_claimable > 0) IERC20(base).transfer(minter, _claimable);
         emit GaugeKilled(_gauge);
     }
 
@@ -512,6 +514,8 @@ contract Voter is IVoter, UUPSUpgradeable, Ownable2StepUpgradeable {
                 uint _share = (uint(_supplied) * _delta) / 1e18; // add accrued difference for each supplied token
                 if (isAlive[_gauge]) {
                     claimable[_gauge] += _share;
+                } else {
+                    IERC20(base).transfer(minter, _share);
                 }
             }
         } else {
