@@ -80,6 +80,8 @@ contract Base is Test {
         0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb // USDT0
     ];
 
+    mapping(address _token => address) whale;
+
     IWHYPE9 WHYPE =
         IWHYPE9(payable(0x5555555555555555555555555555555555555555));
 
@@ -92,6 +94,17 @@ contract Base is Test {
 
     function _setUp() internal {
         if (setUpDone) return;
+
+        /* set whale list for tests */
+        whale[
+            0x5555555555555555555555555555555555555555
+        ] = 0x0000000000000000000000000000000000000000; // WHYPE
+        whale[
+            0x9FDBdA0A5e284c32744D2f17Ee5c74B284993463
+        ] = 0x20000000000000000000000000000000000000c5; // UBTC
+        whale[
+            0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb
+        ] = 0x200000000000000000000000000000000000010C; // USDT0
 
         vm.startPrank(deployer);
 

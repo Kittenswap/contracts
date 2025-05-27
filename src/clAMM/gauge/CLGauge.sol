@@ -213,8 +213,9 @@ contract CLGauge is
         address account,
         address[] calldata tokens
     ) external lock {
+        address msgSender = msg.sender;
         require(
-            msg.sender == account || msg.sender == voter,
+            msgSender == account || msgSender == voter,
             "Not Owner or Voter"
         );
 
@@ -222,7 +223,7 @@ contract CLGauge is
         uint256 len = nfpTokenIdList.length;
 
         for (uint256 i; i < len; ) {
-            _getReward(nfpTokenIdList[i]);
+            _getReward(nfpTokenIdList[i], msgSender);
 
             unchecked {
                 ++i;
@@ -231,19 +232,19 @@ contract CLGauge is
     }
 
     function getReward(uint256 nfpTokenId) external lock {
-        require(userStakedNFPs[msg.sender].contains(nfpTokenId), "Not Owner");
+        address msgSender = msg.sender;
+        require(userStakedNFPs[msgSender].contains(nfpTokenId), "Not Owner");
 
-        _getReward(nfpTokenId);
+        _getReward(nfpTokenId, msgSender);
     }
 
-    function _getReward(uint256 nfpTokenId) internal {
+    function _getReward(uint256 nfpTokenId, address owner) internal {
         (, , , , , int24 _tickLower, int24 _tickUpper, , , , , ) = nfp
             .positions(nfpTokenId);
 
         _updateRewardForNfp(nfpTokenId, _tickLower, _tickUpper);
 
         uint256 reward = rewards[nfpTokenId];
-        address owner = nfp.ownerOf(nfpTokenId);
 
         if (reward > 0) {
             delete rewards[nfpTokenId];
@@ -392,12 +393,13 @@ contract CLGauge is
     }
 
     function withdraw(uint nfpTokenId) public lock actionLock {
-        require(userStakedNFPs[msg.sender].contains(nfpTokenId), "Not Owner");
+        address msgSender = msg.sender;
+        require(userStakedNFPs[msgSender].contains(nfpTokenId), "Not Owner");
 
         nfp.collect(
             INonfungiblePositionManager.CollectParams({
                 tokenId: nfpTokenId,
-                recipient: msg.sender,
+                recipient: msgSender,
                 amount0Max: type(uint128).max,
                 amount1Max: type(uint128).max
             })
@@ -418,7 +420,7 @@ contract CLGauge is
 
         ) = nfp.positions(nfpTokenId);
 
-        _getReward(nfpTokenId);
+        _getReward(nfpTokenId, msgSender);
 
         if (_liquidity != 0)
             pool.stake(-int128(_liquidity), _tickLower, _tickUpper, true);
