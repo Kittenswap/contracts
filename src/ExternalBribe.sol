@@ -270,7 +270,7 @@ contract ExternalBribe is IBribe {
         _prev._prevSupply = 1;
 
         if (_endIndex > 0) {
-            for (uint i = _startIndex; i <= _endIndex - 1; i++) {
+            for (uint i = _startIndex; i <= _endIndex; i++) {
                 _prev._prevTs = checkpoints[tokenId][i].timestamp;
                 _prev._prevBal = checkpoints[tokenId][i].balanceOf;
 
