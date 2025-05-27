@@ -283,7 +283,7 @@ contract ExternalBribe is IBribe {
 
                 prevRewards.timestamp = _nextEpochStart;
                 _prev._prevSupply = supplyCheckpoints[
-                    getPriorSupplyIndex(_nextEpochStart + DURATION)
+                    getPriorSupplyIndex(_nextEpochStart + DURATION - 1)
                 ].supply;
 
                 prevRewards.balance =

@@ -113,4 +113,50 @@ contract TestExternalBribe is TestBribeFactory {
 
         vm.stopPrank();
     }
+
+    function testSupplyCheckpoints() public {
+        testExternalBribe__setUp();
+
+        ExternalBribe _externalBribe = ExternalBribe(
+            externalBribe[poolList[0]]
+        );
+
+        uint256 EPOCH = 1 weeks;
+        uint256 epochStartTime = (block.timestamp / 1 weeks) * 1 weeks;
+        uint256 tokenId = 1;
+        uint256 votingPower = 1 ether;
+
+        vm.prank(address(deployer));
+        kitten.approve(address(_externalBribe), type(uint256).max);
+
+        // epoch 0
+        vm.warp(epochStartTime + 1 * EPOCH);
+        vm.prank(address(voter));
+        _externalBribe._deposit(votingPower, tokenId);
+
+        (, uint _currentSupply) = _externalBribe.supplyCheckpoints(
+            _externalBribe.supplyNumCheckpoints() - 1
+        );
+
+        vm.assertEq(_currentSupply, votingPower);
+
+        // epoch 1
+        vm.warp(epochStartTime + 2 * EPOCH);
+        vm.startPrank(address(voter));
+        _externalBribe._withdraw(votingPower, tokenId);
+        _externalBribe._deposit(votingPower * 2, tokenId);
+        vm.stopPrank();
+
+        (, uint _prevSupply) = _externalBribe.supplyCheckpoints(
+            _externalBribe.supplyNumCheckpoints() - 2
+        );
+        (, _currentSupply) = _externalBribe.supplyCheckpoints(
+            _externalBribe.supplyNumCheckpoints() - 1
+        );
+
+        vm.assertEq(_prevSupply, votingPower);
+        vm.assertEq(_currentSupply, votingPower * 2);
+
+        vm.stopPrank();
+    }
 }
