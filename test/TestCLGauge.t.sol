@@ -342,4 +342,177 @@ contract TestCLGauge is TestCLFactory, TestBribeFactory {
 
         vm.stopPrank();
     }
+
+    function testClaimFees() public {
+        testDeposit();
+
+        CLGauge clGauge = CLGauge(clGaugeList[0]);
+
+        vm.startPrank(deployer);
+        clGauge.claimFees();
+
+        console.log("fees0", clGauge.fees0());
+        console.log("fees1", clGauge.fees1());
+
+        vm.stopPrank();
+    }
+
+    /* Issue due to the flawed clPool.collectFees() logic */
+    function testNoPhantomClaimFees() public {
+        // claim to reset the clPool.gaugeFees()to (1,1)
+        testClaimFees();
+
+        CLGauge clGauge = CLGauge(clGaugeList[0]);
+
+        vm.startPrank(user1);
+
+        (uint128 _gaugefees0, uint128 _gaugefees1) = ICLPool(poolList[0])
+            .gaugeFees();
+
+        console.log("gaugeFees0", _gaugefees0);
+        console.log("gaugeFees1", _gaugefees1);
+        vm.assertEq(_gaugefees0, 1);
+        vm.assertEq(_gaugefees1, 1);
+
+        clGauge.claimFees();
+
+        console.log("fees0", clGauge.fees0());
+        console.log("fees1", clGauge.fees1());
+        vm.assertEq(clGauge.fees0(), 0);
+        vm.assertEq(clGauge.fees1(), 0);
+
+        (_gaugefees0, _gaugefees1) = ICLPool(poolList[0]).gaugeFees();
+
+        console.log("gaugeFees0", _gaugefees0);
+        console.log("gaugeFees1", _gaugefees1);
+        vm.assertEq(_gaugefees0, 1);
+        vm.assertEq(_gaugefees1, 1);
+
+        clGauge.claimFees();
+
+        console.log("fees0", clGauge.fees0());
+        console.log("fees1", clGauge.fees1());
+        vm.assertEq(clGauge.fees0(), 0);
+        vm.assertEq(clGauge.fees1(), 0);
+
+        (_gaugefees0, _gaugefees1) = ICLPool(poolList[0]).gaugeFees();
+
+        console.log("gaugeFees0", _gaugefees0);
+        console.log("gaugeFees1", _gaugefees1);
+        vm.assertEq(_gaugefees0, 1);
+        vm.assertEq(_gaugefees1, 1);
+
+        clGauge.claimFees();
+
+        console.log("fees0", clGauge.fees0());
+        console.log("fees1", clGauge.fees1());
+        vm.assertEq(clGauge.fees0(), 0);
+        vm.assertEq(clGauge.fees1(), 0);
+
+        address token0 = ICLPool(poolList[0]).token0();
+        address token1 = ICLPool(poolList[0]).token1();
+
+        if (token0 == address(WHYPE) || token1 == address(WHYPE)) {
+            vm.startPrank(user1);
+            vm.deal(user1, 1_000 ether);
+            WHYPE.deposit{value: 1_000 ether}();
+            vm.stopPrank();
+        }
+
+        if (token0 != address(WHYPE)) {
+            vm.startPrank(whale[token0]);
+            IERC20(token0).transfer(
+                user1,
+                IERC20(token0).balanceOf(whale[token0])
+            );
+            vm.stopPrank();
+        }
+
+        if (token1 != address(WHYPE)) {
+            vm.startPrank(whale[token1]);
+            IERC20(token1).transfer(
+                user1,
+                IERC20(token1).balanceOf(whale[token1])
+            );
+            vm.stopPrank();
+        }
+
+        vm.startPrank(user1);
+
+        int24 tickSpacing = 200;
+
+        /* swap to test phantom fees1 */
+        ISwapRouter.ExactInputSingleParams memory swapParams = ISwapRouter
+            .ExactInputSingleParams({
+                tokenIn: token0,
+                tokenOut: token1,
+                tickSpacing: tickSpacing,
+                recipient: user1,
+                deadline: block.timestamp + 60 * 20,
+                amountIn: IERC20(token0).balanceOf(user1) / 2,
+                amountOutMinimum: 0,
+                sqrtPriceLimitX96: 0
+            });
+        IERC20(token0).approve(
+            address(swapRouter),
+            IERC20(token0).balanceOf(user1)
+        );
+        swapRouter.exactInputSingle(swapParams);
+
+        vm.stopPrank();
+
+        (_gaugefees0, _gaugefees1) = ICLPool(poolList[0]).gaugeFees();
+
+        console.log("gaugeFees0", _gaugefees0);
+        console.log("gaugeFees1", _gaugefees1);
+        vm.assertEq(_gaugefees1, 1);
+
+        console.log("fees0 before", clGauge.fees0());
+        console.log("fees1 before", clGauge.fees1());
+        console.log(
+            "left0",
+            InternalBribe(clGauge.internal_bribe()).left(token0)
+        );
+
+        clGauge.claimFees();
+
+        console.log("fees0 after", clGauge.fees0());
+        console.log("fees1 after", clGauge.fees1());
+        vm.assertEq(clGauge.fees1(), 0);
+
+        /* swap to test phantom fees0 */
+        vm.startPrank(user1);
+
+        swapParams = ISwapRouter.ExactInputSingleParams({
+            tokenIn: token1,
+            tokenOut: token0,
+            tickSpacing: tickSpacing,
+            recipient: user1,
+            deadline: block.timestamp + 60 * 20,
+            amountIn: IERC20(token1).balanceOf(user1) / 2,
+            amountOutMinimum: 0,
+            sqrtPriceLimitX96: 0
+        });
+        IERC20(token1).approve(
+            address(swapRouter),
+            IERC20(token1).balanceOf(user1)
+        );
+        swapRouter.exactInputSingle(swapParams);
+
+        vm.stopPrank();
+
+        (_gaugefees0, _gaugefees1) = ICLPool(poolList[0]).gaugeFees();
+
+        console.log("gaugeFees0", _gaugefees0);
+        console.log("gaugeFees1", _gaugefees1);
+        vm.assertEq(_gaugefees0, 1);
+
+        console.log("fees0 before", clGauge.fees0());
+        console.log("fees1 before", clGauge.fees1());
+
+        clGauge.claimFees();
+
+        console.log("fees0 after", clGauge.fees0());
+        console.log("fees1 after", clGauge.fees1());
+    }
 }

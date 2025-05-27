@@ -178,34 +178,42 @@ contract CLGauge is
     function _claimFees() internal returns (uint claimed0, uint claimed1) {
         if (!isForPair) return (0, 0);
 
+        uint256 token0BalBefore = IERC20(token0).balanceOf(address(this));
+        uint256 token1BalBefore = IERC20(token1).balanceOf(address(this));
         (claimed0, claimed1) = pool.collectFees();
+        uint256 token0BalAfter = IERC20(token0).balanceOf(address(this));
+        uint256 token1BalAfter = IERC20(token1).balanceOf(address(this));
 
         if (claimed0 > 0 || claimed1 > 0) {
             uint _fees0 = fees0 + claimed0;
             uint _fees1 = fees1 + claimed1;
 
-            if (
-                _fees0 > IBribe(internal_bribe).left(token0) &&
-                _fees0 / ProtocolTimeLibrary.WEEK > 0
-            ) {
-                fees0 = 0;
-                _safeApprove(token0, internal_bribe, _fees0);
-                IBribe(internal_bribe).notifyRewardAmount(token0, _fees0);
-            } else {
-                fees0 = _fees0;
+            if (token0BalAfter - token0BalBefore == claimed0) {
+                if (
+                    _fees0 > IBribe(internal_bribe).left(token0) &&
+                    _fees0 / ProtocolTimeLibrary.WEEK > 0
+                ) {
+                    fees0 = 0;
+                    _safeApprove(token0, internal_bribe, _fees0);
+                    IBribe(internal_bribe).notifyRewardAmount(token0, _fees0);
+                } else {
+                    fees0 = _fees0;
+                }
+                emit ClaimFees(msg.sender, claimed0, 0);
             }
-            if (
-                _fees1 > IBribe(internal_bribe).left(token1) &&
-                _fees1 / ProtocolTimeLibrary.WEEK > 0
-            ) {
-                fees1 = 0;
-                _safeApprove(token1, internal_bribe, _fees1);
-                IBribe(internal_bribe).notifyRewardAmount(token1, _fees1);
-            } else {
-                fees1 = _fees1;
+            if (token1BalAfter - token1BalBefore == claimed1) {
+                if (
+                    _fees1 > IBribe(internal_bribe).left(token1) &&
+                    _fees1 / ProtocolTimeLibrary.WEEK > 0
+                ) {
+                    fees1 = 0;
+                    _safeApprove(token1, internal_bribe, _fees1);
+                    IBribe(internal_bribe).notifyRewardAmount(token1, _fees1);
+                } else {
+                    fees1 = _fees1;
+                }
+                emit ClaimFees(msg.sender, 0, claimed1);
             }
-
-            emit ClaimFees(msg.sender, claimed0, claimed1);
         }
     }
 

@@ -45,12 +45,6 @@ contract VotingEscrow is
      * and per block could be fairly bad b/c Ethereum changes blocktimes.
      * What we can do is to extrapolate ***At functions */
 
-    /// @notice A checkpoint for marking delegated tokenIds from a given timestamp
-    struct Checkpoint {
-        uint timestamp;
-        uint[] tokenIds;
-    }
-
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
     //////////////////////////////////////////////////////////////*/
