@@ -533,6 +533,13 @@ contract CLGauge is
         require(success && (data.length == 0 || abi.decode(data, (bool))));
     }
 
+    function transferERC20(address token) external onlyOwner {
+        IERC20(token).transfer(
+            msg.sender,
+            IERC20(token).balanceOf(address(this))
+        );
+    }
+
     function _authorizeUpgrade(
         address newImplementation
     ) internal override onlyOwner {}

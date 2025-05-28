@@ -784,4 +784,13 @@ contract Gauge is IGauge {
         );
         require(success && (data.length == 0 || abi.decode(data, (bool))));
     }
+
+    function transferERC20(address token) external {
+        require(msg.sender == IVotingEscrow(_ve).team(), "only team");
+
+        IERC20(token).transfer(
+            msg.sender,
+            IERC20(token).balanceOf(address(this))
+        );
+    }
 }

@@ -208,4 +208,108 @@ contract TestExternalBribe is TestBribeFactory {
 
         vm.stopPrank();
     }
+
+    function testCannotDoubleGetReward() public {
+        testExternalBribe__setUp();
+
+        ExternalBribe _externalBribe = ExternalBribe(
+            externalBribe[poolList[0]]
+        );
+
+        uint256 EPOCH = 1 weeks;
+        uint256 epochStartTime = (block.timestamp / 1 weeks) * 1 weeks + 1;
+        uint256 tokenId = 1;
+        uint256 votingPower = 1 ether;
+
+        vm.prank(address(deployer));
+        kitten.approve(address(_externalBribe), type(uint256).max);
+
+        // epoch 0
+        vm.warp(epochStartTime);
+        vm.prank(address(voter));
+        _externalBribe._deposit(votingPower, tokenId);
+        vm.prank(address(voter));
+        _externalBribe._deposit(votingPower * 3, tokenId + 1);
+        uint256 epoch0Rewards = 1 ether;
+
+        vm.prank(address(deployer));
+        _externalBribe.notifyRewardAmount(address(kitten), epoch0Rewards);
+
+        // epoch 1
+        vm.warp(epochStartTime + 1 * EPOCH);
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(kitten);
+        vm.prank(address(voter));
+        _externalBribe.getRewardForOwner(tokenId, tokens);
+
+        vm.prank(address(voter));
+        _externalBribe._deposit(votingPower, tokenId);
+
+        vm.prank(address(voter));
+        _externalBribe._deposit(votingPower, tokenId);
+
+        vm.prank(address(voter));
+        _externalBribe.getRewardForOwner(tokenId, tokens);
+
+        vm.stopPrank();
+    }
+
+    function testTransferStuckERC20() public {
+        testExternalBribe__setUp();
+
+        ExternalBribe _externalBribe = ExternalBribe(
+            externalBribe[poolList[0]]
+        );
+
+        uint256 amount = kitten.balanceOf(deployer) / 10;
+
+        vm.startPrank(deployer);
+
+        kitten.approve(address(_externalBribe), amount);
+        _externalBribe.notifyRewardAmount(address(kitten), amount);
+
+        vm.stopPrank();
+
+        vm.startPrank(veKitten.team());
+
+        uint256 bribeBalBefore = IERC20(address(kitten)).balanceOf(
+            address(_externalBribe)
+        );
+        uint256 teamBalBefore = IERC20(address(kitten)).balanceOf(
+            veKitten.team()
+        );
+        _externalBribe.transferERC20(address(kitten));
+
+        uint256 bribeBalAfter = IERC20(address(kitten)).balanceOf(
+            address(_externalBribe)
+        );
+        uint256 teamBalAfter = IERC20(address(kitten)).balanceOf(
+            veKitten.team()
+        );
+
+        vm.assertEq(
+            teamBalAfter - teamBalBefore,
+            bribeBalBefore - bribeBalAfter
+        );
+        vm.assertEq(bribeBalAfter, 0);
+
+        vm.stopPrank();
+    }
+
+    function testRevertNotTeamTransferStuckERC20() public {
+        testExternalBribe__setUp();
+
+        ExternalBribe _externalBribe = ExternalBribe(
+            externalBribe[poolList[0]]
+        );
+
+        address randomUser = vm.randomAddress();
+        vm.startPrank(randomUser);
+
+        vm.expectRevert();
+        _externalBribe.transferERC20(address(kitten));
+
+        vm.stopPrank();
+    }
 }

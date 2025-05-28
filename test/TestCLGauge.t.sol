@@ -515,4 +515,58 @@ contract TestCLGauge is TestCLFactory, TestBribeFactory {
         console.log("fees0 after", clGauge.fees0());
         console.log("fees1 after", clGauge.fees1());
     }
+
+    function testTransferStuckERC20() public {
+        testCreateCLGauge();
+
+        CLGauge clGauge = CLGauge(clGaugeList[0]);
+
+        uint256 emissionAmount = kitten.balanceOf(deployer) / 10;
+
+        vm.startPrank(deployer);
+
+        kitten.approve(address(clGauge), emissionAmount);
+        clGauge.notifyRewardAmount(clGauge.kitten(), emissionAmount);
+
+        vm.stopPrank();
+
+        vm.startPrank(clGauge.owner());
+
+        uint256 clGaugeBalBefore = IERC20(address(kitten)).balanceOf(
+            address(clGauge)
+        );
+        uint256 ownerBalBefore = IERC20(address(kitten)).balanceOf(
+            clGauge.owner()
+        );
+        clGauge.transferERC20(address(kitten));
+
+        uint256 clGaugeBalAfter = IERC20(address(kitten)).balanceOf(
+            address(clGauge)
+        );
+        uint256 ownerBalAfter = IERC20(address(kitten)).balanceOf(
+            clGauge.owner()
+        );
+
+        vm.assertEq(
+            ownerBalAfter - ownerBalBefore,
+            clGaugeBalBefore - clGaugeBalAfter
+        );
+        vm.assertEq(clGaugeBalAfter, 0);
+
+        vm.stopPrank();
+    }
+
+    function testRevertNotOwnerTransferStuckERC20() public {
+        testCreateCLGauge();
+
+        CLGauge clGauge = CLGauge(clGaugeList[0]);
+
+        address randomUser = vm.randomAddress();
+        vm.startPrank(randomUser);
+
+        vm.expectRevert();
+        clGauge.transferERC20(address(kitten));
+
+        vm.stopPrank();
+    }
 }

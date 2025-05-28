@@ -33,17 +33,20 @@ import {ExternalBribe} from "src/ExternalBribe.sol";
 import {IERC20} from "src/interfaces/IERC20.sol";
 
 import {TestCLFactory} from "test/TestCLFactory.t.sol";
+import {TestPairFactory} from "test/TestPairFactory.t.sol";
+import {IPair} from "src/interfaces/IPair.sol";
 
 interface ICLFactoryExtended is ICLFactory {
     function setVoter(address _voter) external;
 }
 
-contract TestBribeFactory is TestCLFactory {
+contract TestBribeFactory is TestCLFactory, TestPairFactory {
     mapping(address poolAddress => address) internalBribe;
     mapping(address poolAddress => address) externalBribe;
 
     function testBribeFactory__setUp() public {
         testCLFactory__setUp();
+        testPairFactory__setUp();
 
         vm.startPrank(address(voter));
 
@@ -69,6 +72,30 @@ contract TestBribeFactory is TestCLFactory {
             console.log("pool bribes", pool);
             console.log("internal bribe", internalBribe[pool]);
             console.log("external bribe", externalBribe[pool]);
+        }
+
+        for (uint i; i < pairListVolatile.length; i++) {
+            address pair = pairListVolatile[i];
+
+            address[] memory internalRewardList = new address[](2);
+            (internalRewardList[0], internalRewardList[1]) = IPair(pair)
+                .tokens();
+
+            address[] memory externalRewardList = new address[](3);
+            externalRewardList[0] = address(kitten);
+            externalRewardList[1] = internalRewardList[0];
+            externalRewardList[2] = internalRewardList[1];
+
+            internalBribe[pair] = bribeFactory.createInternalBribe(
+                internalRewardList
+            );
+            externalBribe[pair] = bribeFactory.createExternalBribe(
+                externalRewardList
+            );
+
+            console.log("pair bribes", pair);
+            console.log("internal bribe", internalBribe[pair]);
+            console.log("external bribe", externalBribe[pair]);
         }
 
         vm.stopPrank();
