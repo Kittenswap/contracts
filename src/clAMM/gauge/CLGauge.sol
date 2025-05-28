@@ -315,8 +315,12 @@ contract CLGauge is
             rewardGrowthGlobalX128
         );
 
-        uint256 rewardGrowthInsideDelta = rewardGrowthInsideCurrent -
-            rewardGrowthInsideInitial;
+        uint256 rewardGrowthInsideDelta;
+        unchecked {
+            rewardGrowthInsideDelta =
+                rewardGrowthInsideCurrent -
+                rewardGrowthInsideInitial;
+        }
 
         return (rewardGrowthInsideDelta * _liquidity) / FixedPoint128.Q128;
     }
