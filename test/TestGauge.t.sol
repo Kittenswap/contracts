@@ -33,72 +33,22 @@ import {ExternalBribe} from "src/ExternalBribe.sol";
 import {IERC20} from "src/interfaces/IERC20.sol";
 
 import {TestCLFactory} from "test/TestCLFactory.t.sol";
-import {TestBribeFactory} from "test/TestBribeFactory.t.sol";
 import {Pair} from "src/Pair.sol";
+import {TestVoter} from "test/TestVoter.t.sol";
 
 interface ICLFactoryExtended is ICLFactory {
     function setVoter(address _voter) external;
 }
 
-contract TestGauge is TestBribeFactory {
-    address[] gaugeList;
-
+contract TestGauge is TestVoter {
+    bool Gauge__setUp;
     function testGauge__setUp() public {
-        testBribeFactory__setUp();
+        testVote();
+
+        if (Gauge__setUp) return;
+        Gauge__setUp = true;
 
         vm.startPrank(deployer);
-
-        vm.stopPrank();
-    }
-
-    function testCreateGauge() public {
-        testGauge__setUp();
-
-        vm.startPrank(address(voter));
-
-        console.log("pair volatile");
-        for (uint i; i < pairListVolatile.length; i++) {
-            address pairAddress = pairListVolatile[i];
-
-            address[] memory allowedRewards = new address[](1);
-            allowedRewards[0] = address(kitten);
-
-            address gaugeAddress = gaugeFactory.createGauge(
-                pairAddress,
-                internalBribe[pairAddress], // _internal_bribe
-                externalBribe[pairAddress], // _external_bribe
-                address(veKitten), // veKitten
-                true, // _isPool
-                allowedRewards
-            );
-
-            gaugeList.push(gaugeAddress);
-
-            console.log("pair gauge", pairAddress, gaugeAddress);
-
-            vm.stopPrank();
-        }
-
-        console.log("pair stable");
-        for (uint i; i < pairListStable.length; i++) {
-            address pairAddress = pairListStable[i];
-
-            address[] memory allowedRewards = new address[](1);
-            allowedRewards[0] = address(kitten);
-
-            address gaugeAddress = gaugeFactory.createGauge(
-                pairAddress,
-                internalBribe[pairAddress], // _internal_bribe
-                externalBribe[pairAddress], // _external_bribe
-                address(veKitten), // veKitten
-                true, // _isPool
-                allowedRewards
-            );
-
-            gaugeList.push(gaugeAddress);
-
-            console.log("pair gauge", pairAddress, gaugeAddress);
-        }
 
         vm.stopPrank();
     }
@@ -106,11 +56,14 @@ contract TestGauge is TestBribeFactory {
     function testTransferStuckERC20() public {
         testCreateGauge();
 
-        Gauge gauge = Gauge(gaugeList[0]);
+        Gauge gauge = Gauge(gauge[pairListVolatile[0]]);
 
-        uint256 emissionAmount = kitten.balanceOf(deployer) / 10;
+        vm.prank(kitten.minter());
+        kitten.mint(address(voter), 1 ether);
 
-        vm.startPrank(deployer);
+        uint256 emissionAmount = kitten.balanceOf(address(voter));
+
+        vm.startPrank(address(voter));
 
         kitten.approve(address(gauge), emissionAmount);
         gauge.notifyRewardAmount(address(kitten), emissionAmount);
@@ -146,7 +99,7 @@ contract TestGauge is TestBribeFactory {
     function testRevertNotTeamTransferStuckERC20() public {
         testCreateGauge();
 
-        Gauge gauge = Gauge(gaugeList[0]);
+        Gauge gauge = Gauge(gauge[pairListVolatile[0]]);
 
         address randomUser = vm.randomAddress();
         vm.startPrank(randomUser);
@@ -155,5 +108,32 @@ contract TestGauge is TestBribeFactory {
         gauge.transferERC20(address(kitten));
 
         vm.stopPrank();
+    }
+
+    function testNotifyRewardAmount() public {
+        testCreateGauge();
+
+        for (uint i; i < pairListVolatile.length; i++) {
+            Gauge _gauge = Gauge(gauge[pairListVolatile[i]]);
+
+            vm.prank(kitten.minter());
+            kitten.mint(address(voter), 1 ether);
+
+            vm.prank(address(voter));
+            _gauge.notifyRewardAmount(address(kitten), 1 ether);
+        }
+    }
+
+    function testRevertNotVoterNotifyRewardAmount() public {
+        testCreateGauge();
+
+        for (uint i; i < pairListVolatile.length; i++) {
+            Gauge _gauge = Gauge(gauge[pairListVolatile[i]]);
+
+            address randomUser = vm.randomAddress();
+            vm.prank(randomUser);
+            vm.expectRevert();
+            _gauge.notifyRewardAmount(address(kitten), 1 ether);
+        }
     }
 }

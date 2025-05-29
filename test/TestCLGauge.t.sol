@@ -41,8 +41,6 @@ interface ICLFactoryExtended is ICLFactory {
 }
 
 contract TestCLGauge is TestVoter {
-    address[] clGaugeList;
-
     bool CLGauge__setUp;
     function testCLGauge__setUp() public {
         testVote();

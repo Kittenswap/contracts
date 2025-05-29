@@ -692,6 +692,7 @@ contract Gauge is IGauge {
     function notifyRewardAmount(address token, uint amount) external lock {
         require(token != stake);
         require(amount > 0);
+        require(msg.sender == voter, "Not voter");
         if (!isReward[token]) {
             require(
                 IVoter(voter).isWhitelisted(token),
