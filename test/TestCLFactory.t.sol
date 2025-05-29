@@ -29,6 +29,7 @@ import {Gauge} from "src/Gauge.sol";
 import {InternalBribe} from "src/InternalBribe.sol";
 import {CLGauge} from "src/clAMM/gauge/CLGauge.sol";
 import {ExternalBribe} from "src/ExternalBribe.sol";
+import {ProxyAdmin} from "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
 
 import {IERC20} from "src/interfaces/IERC20.sol";
 
@@ -81,5 +82,26 @@ contract TestCLFactory is Base {
         for (uint i; i < poolList.length; i++) {
             console.log("i", poolList[i]);
         }
+    }
+
+    function testUpgradeTransparentProxy() public {
+        testCLFactory__setUp();
+
+        address admin = Upgrades.getAdminAddress(address(clFactory));
+
+        vm.startPrank(multisig);
+
+        Options memory opts;
+        // opts.unsafeSkipAllChecks = true;
+        opts.referenceContract = "CLFactory.sol";
+
+        Upgrades.upgradeProxy(
+            address(clFactory),
+            "CLFactoryV2.sol",
+            abi.encode(),
+            opts
+        );
+
+        vm.stopPrank();
     }
 }
