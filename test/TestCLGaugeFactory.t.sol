@@ -38,56 +38,17 @@ interface ICLFactoryExtended is ICLFactory {
     function setVoter(address _voter) external;
 }
 
-contract TestPairFactory is Base {
-    address[] pairListVolatile;
-    address[] pairListStable;
+contract TestCLGaugeFactory is Base {
 
-    bool PairFactory__setUp;
-    function testPairFactory__setUp() public {
+    bool CLGaugeFactory__setUp;
+    function testCLGaugeFactory__setUp() public {
         _setUp();
 
-        if (PairFactory__setUp) return;
-        PairFactory__setUp = true;
+        if (CLGaugeFactory__setUp) return;
+        CLGaugeFactory__setUp = true;
 
         vm.startPrank(deployer);
 
-        for (uint i; i < tokenList.length; i++) {
-            for (uint j; j < i; j++) {
-                address pairVolatile = pairFactory.getPair(
-                    tokenList[i],
-                    tokenList[j],
-                    false
-                );
-                address pairStable = pairFactory.getPair(
-                    tokenList[i],
-                    tokenList[j],
-                    true
-                );
-
-                if (pairVolatile != address(0)) {
-                    pairListVolatile.push(pairVolatile);
-                }
-                if (pairStable != address(0)) {
-                    pairListStable.push(pairStable);
-                }
-            }
-        }
-
         vm.stopPrank();
-
-        console.log("tokenList");
-        for (uint i; i < tokenList.length; i++) {
-            console.log("i", i, tokenList[i]);
-        }
-
-        console.log("pairListVolatile");
-        for (uint i; i < pairListVolatile.length; i++) {
-            console.log("i", i, pairListVolatile[i]);
-        }
-
-        console.log("pairListStable");
-        for (uint i; i < pairListStable.length; i++) {
-            console.log("i", i, pairListStable[i]);
-        }
     }
 }

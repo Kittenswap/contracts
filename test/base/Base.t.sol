@@ -86,14 +86,23 @@ contract Base is Test {
         IWHYPE9(payable(0x5555555555555555555555555555555555555555));
 
     /* users */
-    address user1 = vm.randomAddress();
-    address user2 = vm.randomAddress();
-    address swapper = vm.randomAddress();
+    uint256 numberOfUsers = 3;
+    address[] userList;
 
-    bool setUpDone;
+    bool Base__setUp;
 
     function _setUp() internal {
-        if (setUpDone) return;
+        if (Base__setUp) return;
+        Base__setUp = true;
+
+        /* generate users */
+        console.log("users");
+        for (uint i; i < numberOfUsers; i++) {
+            address _user = vm.randomAddress();
+            userList.push(_user);
+            vm.deal(_user, 1_000 ether);
+            console.log(i, userList[i]);
+        }
 
         /* set whale list for tests */
         whale[
@@ -215,7 +224,6 @@ contract Base is Test {
             address(clGaugeFactory)
         );
 
-        setUpDone = true;
         vm.stopPrank();
     }
 }

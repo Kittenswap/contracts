@@ -34,51 +34,23 @@ import {IERC20} from "src/interfaces/IERC20.sol";
 
 import {TestCLFactory} from "test/TestCLFactory.t.sol";
 import {TestBribeFactory} from "test/TestBribeFactory.t.sol";
+import {TestVoter} from "test/TestVoter.t.sol";
 
 interface ICLFactoryExtended is ICLFactory {
     function setVoter(address _voter) external;
 }
 
-contract TestCLGauge is TestCLFactory, TestBribeFactory {
+contract TestCLGauge is TestVoter {
     address[] clGaugeList;
 
+    bool CLGauge__setUp;
     function testCLGauge__setUp() public {
-        testBribeFactory__setUp();
+        testVote();
+
+        if (CLGauge__setUp) return;
+        CLGauge__setUp = true;
 
         vm.startPrank(deployer);
-
-        vm.stopPrank();
-    }
-
-    function testCreateCLGauge() public {
-        testCLGauge__setUp();
-
-        vm.startPrank(address(voter));
-
-        for (uint i; i < poolList.length; i++) {
-            address poolAddress = poolList[i];
-            address gaugeAddress = clGaugeFactory.createGauge(
-                poolAddress,
-                internalBribe[poolAddress], // _internal_bribe
-                address(kitten), // _kitten
-                true // _isPool
-            );
-
-            clGaugeList.push(gaugeAddress);
-
-            CLGauge gauge = CLGauge(gaugeAddress);
-
-            vm.assertEq(ICLPool(poolAddress).gauge(), gaugeAddress);
-
-            vm.stopPrank();
-
-            vm.startPrank(deployer);
-            gauge.acceptOwnership();
-            vm.stopPrank();
-
-            vm.startPrank(address(voter));
-            vm.assertEq(gauge.owner(), deployer);
-        }
 
         vm.stopPrank();
     }
@@ -103,104 +75,114 @@ contract TestCLGauge is TestCLFactory, TestBribeFactory {
         vm.stopPrank();
     }
 
-    function testDeposit() public returns (uint256 nfpTokenId) {
-        testCreateCLGauge();
+    function testDeposit() public {
+        testCLGauge__setUp();
 
-        CLGauge clGauge = CLGauge(clGaugeList[0]);
+        for (uint k; k < userList.length; k++) {
+            address user1 = userList[k];
 
-        address token0 = ICLPool(poolList[0]).token0();
-        address token1 = ICLPool(poolList[0]).token1();
+            console.log("user", user1);
+            for (uint i; i < poolList.length; i++) {
+                ICLPool pool = ICLPool(poolList[i]);
 
-        if (token0 == address(WHYPE) || token1 == address(WHYPE)) {
-            vm.startPrank(user1);
-            vm.deal(user1, 1_000 ether);
-            WHYPE.deposit{value: 1_000 ether}();
-            vm.stopPrank();
-        }
+                CLGauge clGauge = CLGauge(gauge[address(pool)]);
 
-        if (token0 != address(WHYPE)) {
-            vm.startPrank(whale[token0]);
-            IERC20(token0).transfer(
-                user1,
-                IERC20(token0).balanceOf(whale[token0])
-            );
-            vm.stopPrank();
-        }
+                address token0 = ICLPool(pool).token0();
+                address token1 = ICLPool(pool).token1();
 
-        if (token1 != address(WHYPE)) {
-            vm.startPrank(whale[token1]);
-            IERC20(token1).transfer(
-                user1,
-                IERC20(token1).balanceOf(whale[token1])
-            );
-            vm.stopPrank();
-        }
+                if (token0 == address(WHYPE) || token1 == address(WHYPE)) {
+                    vm.startPrank(user1);
+                    vm.deal(user1, 1_000 ether);
+                    WHYPE.deposit{value: 1_000 ether}();
+                    vm.stopPrank();
+                }
 
-        vm.startPrank(user1);
+                if (token0 != address(WHYPE)) {
+                    vm.startPrank(whale[token0]);
+                    IERC20(token0).transfer(
+                        user1,
+                        (IERC20(token0).balanceOf(whale[token0]) *
+                            vm.randomUint(1, 5_000)) / 10_000
+                    );
+                    vm.stopPrank();
+                }
 
-        int24 tickSpacing = 200;
+                if (token1 != address(WHYPE)) {
+                    vm.startPrank(whale[token1]);
+                    IERC20(token1).transfer(
+                        user1,
+                        (IERC20(token1).balanceOf(whale[token1]) *
+                            vm.randomUint(1, 5_000)) / 10_000
+                    );
+                    vm.stopPrank();
+                }
 
-        IERC20(token0).approve(address(nfp), IERC20(token0).balanceOf(user1));
-        IERC20(token1).approve(address(nfp), IERC20(token1).balanceOf(user1));
-        INonfungiblePositionManager.MintParams
-            memory params = INonfungiblePositionManager.MintParams({
-                token0: token0,
-                token1: token1,
-                tickSpacing: tickSpacing,
-                tickLower: (-887272 / tickSpacing) * tickSpacing + tickSpacing,
-                tickUpper: (887272 / tickSpacing) * tickSpacing,
-                amount0Desired: IERC20(token0).balanceOf(user1) / 2,
-                amount1Desired: IERC20(token1).balanceOf(user1) / 2,
-                amount0Min: 0,
-                amount1Min: 0,
-                recipient: user1,
-                deadline: block.timestamp + 60 * 20,
-                sqrtPriceX96: 0
-            });
-        (nfpTokenId, , , ) = nfp.mint(params);
+                vm.startPrank(user1);
 
-        IERC20(token0).approve(
-            address(swapRouter),
-            IERC20(token0).balanceOf(user1)
-        );
+                int24 tickSpacing = 200;
 
-        nfp.setApprovalForAll(address(clGauge), true);
-        clGauge.deposit(nfpTokenId, 0);
+                IERC20(token0).approve(
+                    address(nfp),
+                    IERC20(token0).balanceOf(user1)
+                );
+                IERC20(token1).approve(
+                    address(nfp),
+                    IERC20(token1).balanceOf(user1)
+                );
+                INonfungiblePositionManager.MintParams
+                    memory params = INonfungiblePositionManager.MintParams({
+                        token0: token0,
+                        token1: token1,
+                        tickSpacing: tickSpacing,
+                        tickLower: (-887272 / tickSpacing) *
+                            tickSpacing +
+                            tickSpacing,
+                        tickUpper: (887272 / tickSpacing) * tickSpacing,
+                        amount0Desired: IERC20(token0).balanceOf(user1) / 2,
+                        amount1Desired: IERC20(token1).balanceOf(user1) / 2,
+                        amount0Min: 0,
+                        amount1Min: 0,
+                        recipient: user1,
+                        deadline: block.timestamp + 60 * 20,
+                        sqrtPriceX96: 0
+                    });
+                (uint256 nfpTokenId, , , ) = nfp.mint(params);
 
-        // ISwapRouter.ExactInputSingleParams memory swapParams = ISwapRouter
-        //     .ExactInputSingleParams({
-        //         tokenIn: token0,
-        //         tokenOut: token1,
-        //         tickSpacing: tickSpacing,
-        //         recipient: user1,
-        //         deadline: block.timestamp + 60 * 20,
-        //         amountIn: IERC20(token0).balanceOf(user1) / 2,
-        //         amountOutMinimum: 0,
-        //         sqrtPriceLimitX96: 0
-        //     });
-        // swapRouter.exactInputSingle(swapParams);
+                IERC20(token0).approve(
+                    address(swapRouter),
+                    IERC20(token0).balanceOf(user1)
+                );
 
-        vm.assertEq(nfp.ownerOf(nfpTokenId), address(clGauge));
+                nfp.setApprovalForAll(address(clGauge), true);
+                clGauge.deposit(nfpTokenId, 0);
 
-        uint256[] memory stakedNFPs = clGauge.getUserStakedNFPs(user1);
-        bool containsNfpTokenId;
-        for (uint i; i < stakedNFPs.length; i++) {
-            if (stakedNFPs[i] == nfpTokenId) {
-                containsNfpTokenId = true;
-                break;
+                vm.assertEq(nfp.ownerOf(nfpTokenId), address(clGauge));
+
+                uint256[] memory stakedNFPs = clGauge.getUserStakedNFPs(user1);
+                bool containsNfpTokenId;
+                for (uint j; j < stakedNFPs.length; j++) {
+                    if (stakedNFPs[j] == nfpTokenId) {
+                        containsNfpTokenId = true;
+                        break;
+                    }
+                }
+                vm.assertTrue(containsNfpTokenId);
+                console.log("nfpTokenId", nfpTokenId);
+
+                vm.stopPrank();
             }
         }
-        vm.assertTrue(containsNfpTokenId);
-
-        vm.stopPrank();
     }
 
     /* Get reward tests */
     // function testFuzz_GetRewardForNfpTokenId(uint256 emissionAmount) public {
     function testGetRewardForNfpTokenId() public {
-        uint256 nfpTokenId = testDeposit();
+        testDeposit();
 
-        CLGauge clGauge = CLGauge(clGaugeList[0]);
+        address user1 = userList[0];
+
+        CLGauge clGauge = CLGauge(gauge[address(poolList[0])]);
+        uint256 nfpTokenId = clGauge.getUserStakedNFPs(user1)[0];
 
         // vm.assume(emissionAmount <= kitten.balanceOf(deployer));
         // vm.assume(emissionAmount >= 1 ether);
@@ -222,9 +204,12 @@ contract TestCLGauge is TestCLFactory, TestBribeFactory {
         clGauge.getReward(nfpTokenId);
         uint256 kittenBalAfter = kitten.balanceOf(user1);
 
+        (, , , , , , , uint128 _liquidity, , , , ) = nfp.positions(nfpTokenId);
+
         vm.assertApproxEqAbs(
             kittenBalAfter - kittenBalBefore,
-            emissionAmount,
+            (emissionAmount * _liquidity) /
+                ICLPool(poolList[0]).stakedLiquidity(),
             10 ** 6
         );
 
@@ -234,7 +219,10 @@ contract TestCLGauge is TestCLFactory, TestBribeFactory {
     function testGetRewardForAccount() public {
         testDeposit();
 
-        CLGauge clGauge = CLGauge(clGaugeList[0]);
+        address user1 = userList[0];
+
+        CLGauge clGauge = CLGauge(gauge[address(poolList[0])]);
+        uint256 nfpTokenId = clGauge.getUserStakedNFPs(user1)[0];
 
         uint256 emissionAmount = kitten.balanceOf(deployer) / 10;
 
@@ -255,9 +243,12 @@ contract TestCLGauge is TestCLFactory, TestBribeFactory {
         clGauge.getReward(user1, emptyList);
         uint256 kittenBalAfter = kitten.balanceOf(user1);
 
+        (, , , , , , , uint128 _liquidity, , , , ) = nfp.positions(nfpTokenId);
+
         vm.assertApproxEqAbs(
             kittenBalAfter - kittenBalBefore,
-            emissionAmount,
+            (emissionAmount * _liquidity) /
+                ICLPool(poolList[0]).stakedLiquidity(),
             10 ** 6
         );
 
@@ -265,9 +256,10 @@ contract TestCLGauge is TestCLFactory, TestBribeFactory {
     }
 
     function testRevertNotOwnerGetReward() public {
-        uint256 nfpTokenId = testDeposit();
+        testDeposit();
 
-        CLGauge clGauge = CLGauge(clGaugeList[0]);
+        CLGauge clGauge = CLGauge(gauge[address(poolList[0])]);
+        uint256 nfpTokenId = clGauge.getUserStakedNFPs(userList[0])[0];
 
         uint256 emissionAmount = kitten.balanceOf(deployer) / 10;
 
@@ -290,9 +282,10 @@ contract TestCLGauge is TestCLFactory, TestBribeFactory {
     }
 
     function testRevertNotOwnerGetRewardForAccount() public {
-        uint256 nfpTokenId = testDeposit();
+        testDeposit();
 
-        CLGauge clGauge = CLGauge(clGaugeList[0]);
+        CLGauge clGauge = CLGauge(gauge[address(poolList[0])]);
+        uint256 nfpTokenId = clGauge.getUserStakedNFPs(userList[0])[0];
 
         uint256 emissionAmount = kitten.balanceOf(deployer) / 10;
 
@@ -317,9 +310,10 @@ contract TestCLGauge is TestCLFactory, TestBribeFactory {
     }
 
     function testRevertNotOwnerOrVoterGetRewardForAccount() public {
-        uint256 nfpTokenId = testDeposit();
+        testDeposit();
 
-        CLGauge clGauge = CLGauge(clGaugeList[0]);
+        CLGauge clGauge = CLGauge(gauge[address(poolList[0])]);
+        uint256 nfpTokenId = clGauge.getUserStakedNFPs(userList[0])[0];
 
         uint256 emissionAmount = kitten.balanceOf(deployer) / 10;
 
@@ -346,7 +340,7 @@ contract TestCLGauge is TestCLFactory, TestBribeFactory {
     function testClaimFees() public {
         testDeposit();
 
-        CLGauge clGauge = CLGauge(clGaugeList[0]);
+        CLGauge clGauge = CLGauge(gauge[address(poolList[0])]);
 
         vm.startPrank(deployer);
         clGauge.claimFees();
@@ -359,10 +353,11 @@ contract TestCLGauge is TestCLFactory, TestBribeFactory {
 
     /* Issue due to the flawed clPool.collectFees() logic */
     function testNoPhantomClaimFees() public {
-        // claim to reset the clPool.gaugeFees()to (1,1)
+        // claim to reset the clPool.gaugeFees() to (1,1)
         testClaimFees();
 
-        CLGauge clGauge = CLGauge(clGaugeList[0]);
+        CLGauge clGauge = CLGauge(gauge[address(poolList[0])]);
+        address user1 = userList[0];
 
         vm.startPrank(user1);
 
@@ -517,9 +512,9 @@ contract TestCLGauge is TestCLFactory, TestBribeFactory {
     }
 
     function testTransferStuckERC20() public {
-        testCreateCLGauge();
+        testDeposit();
 
-        CLGauge clGauge = CLGauge(clGaugeList[0]);
+        CLGauge clGauge = CLGauge(gauge[address(poolList[0])]);
 
         uint256 emissionAmount = kitten.balanceOf(deployer) / 10;
 
@@ -557,9 +552,9 @@ contract TestCLGauge is TestCLFactory, TestBribeFactory {
     }
 
     function testRevertNotOwnerTransferStuckERC20() public {
-        testCreateCLGauge();
+        testDeposit();
 
-        CLGauge clGauge = CLGauge(clGaugeList[0]);
+        CLGauge clGauge = CLGauge(gauge[address(poolList[0])]);
 
         address randomUser = vm.randomAddress();
         vm.startPrank(randomUser);

@@ -45,8 +45,15 @@ contract TestVotingEscrow is Base {
         vm.startPrank(deployer);
 
         kitten.approve(address(veKitten), type(uint256).max);
-        veKitten.create_lock_for(100_000_000 ether, 52 weeks * 2, user1);
-        veKitten.create_lock_for(150_000_000 ether, 52 weeks * 2, user2);
+
+        for (uint i; i < userList.length; i++) {
+            veKitten.create_lock_for(
+                (kitten.balanceOf(deployer) * vm.randomUint(1, 10_000)) /
+                    10_000,
+                vm.randomUint(1 weeks, 2 * 365 days),
+                userList[i]
+            );
+        }
 
         vm.stopPrank();
     }
@@ -57,6 +64,8 @@ contract TestVotingEscrow is Base {
         returns (uint tokenIdFrom, uint tokenId1, uint tokenId2)
     {
         testDistributeVeKitten();
+
+        address user1 = userList[0];
 
         vm.startPrank(user1);
 
@@ -85,11 +94,15 @@ contract TestVotingEscrow is Base {
     function testSplitVeKittenFromNotBurned() public {
         (uint256 tokenIdFrom, , ) = testSplitVeKitten();
 
+        address user1 = userList[0];
+
         vm.assertEq(user1, veKitten.ownerOf(tokenIdFrom));
     }
 
     function testSplitVeKittenGreaterThanLocked() public {
         testDistributeVeKitten();
+
+        address user1 = userList[0];
 
         vm.startPrank(user1);
 
@@ -108,6 +121,8 @@ contract TestVotingEscrow is Base {
     function testSplitVeKittenZeroTokenId1() public {
         testDistributeVeKitten();
 
+        address user1 = userList[0];
+
         vm.startPrank(user1);
 
         uint veKittenId = veKitten.tokenOfOwnerByIndex(user1, 0);
@@ -122,6 +137,8 @@ contract TestVotingEscrow is Base {
     function testSplitVeKittenZeroTokenId2() public {
         testDistributeVeKitten();
 
+        address user1 = userList[0];
+
         vm.startPrank(user1);
 
         uint veKittenId = veKitten.tokenOfOwnerByIndex(user1, 0);
@@ -135,6 +152,8 @@ contract TestVotingEscrow is Base {
 
     function testLockTimeRounding() public {
         (uint tokenIdFrom, uint tokenId1, uint tokenId2) = testSplitVeKitten();
+
+        address user1 = userList[0];
 
         vm.startPrank(user1);
 
@@ -158,6 +177,8 @@ contract TestVotingEscrow is Base {
         returns (uint tokenIdFrom, uint tokenId1, uint tokenId2)
     {
         testDistributeVeKitten();
+
+        address user1 = userList[0];
 
         vm.startPrank(user1);
 
@@ -186,6 +207,8 @@ contract TestVotingEscrow is Base {
         returns (uint tokenIdFrom, uint tokenId1, uint tokenId2)
     {
         testDistributeVeKitten();
+
+        address user1 = userList[0];
 
         vm.startPrank(user1);
 
@@ -216,9 +239,11 @@ contract TestVotingEscrow is Base {
         uint256 tokenId2;
     }
     function testMergeVeKitten() public {
-        TestMergeVeKittenVars memory v;
-
         _setUp();
+
+        address user1 = userList[0];
+
+        TestMergeVeKittenVars memory v;
 
         vm.startPrank(deployer);
 
@@ -269,9 +294,11 @@ contract TestVotingEscrow is Base {
     }
 
     function testSupplyNotChangeMergeVeKitten() public {
-        TestMergeVeKittenVars memory v;
-
         _setUp();
+
+        address user1 = userList[0];
+
+        TestMergeVeKittenVars memory v;
 
         vm.startPrank(deployer);
 
@@ -307,9 +334,11 @@ contract TestVotingEscrow is Base {
     }
 
     function testApprovedMergeVeKitten() public {
-        TestMergeVeKittenVars memory v;
-
         _setUp();
+
+        address user1 = userList[0];
+
+        TestMergeVeKittenVars memory v;
 
         vm.startPrank(deployer);
 
@@ -367,9 +396,11 @@ contract TestVotingEscrow is Base {
     }
 
     function testNotApprovedMergeVeKittenToken1() public {
-        TestMergeVeKittenVars memory v;
-
         _setUp();
+
+        address user1 = userList[0];
+
+        TestMergeVeKittenVars memory v;
 
         vm.startPrank(deployer);
 
@@ -408,9 +439,11 @@ contract TestVotingEscrow is Base {
     }
 
     function testNotApprovedMergeVeKittenToken2() public {
-        TestMergeVeKittenVars memory v;
-
         _setUp();
+
+        address user1 = userList[0];
+
+        TestMergeVeKittenVars memory v;
 
         vm.startPrank(deployer);
 
@@ -451,6 +484,8 @@ contract TestVotingEscrow is Base {
     /* Withdraw tests */
     function testWithdrawVeKitten() public {
         _setUp();
+
+        address user1 = userList[0];
 
         vm.startPrank(deployer);
 
@@ -500,6 +535,8 @@ contract TestVotingEscrow is Base {
     function testApprovedWithdrawVeKitten() public {
         _setUp();
 
+        address user1 = userList[0];
+
         vm.startPrank(deployer);
 
         kitten.approve(address(veKitten), type(uint256).max);
@@ -544,6 +581,8 @@ contract TestVotingEscrow is Base {
 
     function testRevertNotApprovedWithdrawVeKitten() public {
         _setUp();
+
+        address user1 = userList[0];
 
         vm.startPrank(deployer);
 

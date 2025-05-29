@@ -43,8 +43,12 @@ contract TestCLFactory is Base {
 
     int24[] tickSpacings;
 
+    bool CLFactory__setUp;
     function testCLFactory__setUp() public {
         _setUp();
+
+        if (CLFactory__setUp) return;
+        CLFactory__setUp = true;
 
         vm.startPrank(deployer);
 

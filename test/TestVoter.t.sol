@@ -37,19 +37,37 @@ import {TestPairFactory} from "test/TestPairFactory.t.sol";
 import {TestVotingEscrow} from "test/TestVotingEscrow.t.sol";
 import {TestCLGauge} from "test/TestCLGauge.t.sol";
 import {ProtocolTimeLibrary} from "src/clAMM/libraries/ProtocolTimeLibrary.sol";
+import {TestCLFactory} from "test/TestCLFactory.t.sol";
+import {TestCLGaugeFactory} from "test/TestCLGaugeFactory.t.sol";
 
 interface ICLFactoryExtended is ICLFactory {
     function setVoter(address _voter) external;
 }
 
-contract TestVoter is TestPairFactory, TestVotingEscrow, TestCLGauge {
-    function testCreateGauge() public {
+contract TestVoter is
+    TestPairFactory,
+    TestCLFactory,
+    TestCLGaugeFactory,
+    TestVotingEscrow
+{
+    mapping(address _pool => address) gauge;
+
+    bool Voter__setUp;
+    function testVoter__setUp() public {
         testPairFactory__setUp();
-        testCLGauge__setUp();
+        testCLFactory__setUp();
         testDistributeVeKitten();
+
+        // ensure that all voting tests will initially be set at the beginning of the epoch (vote open)
+        // vm.warp(ProtocolTimeLibrary.epochVoteStart(block.timestamp) + 1);
+    }
+
+    function testCreateGauge() public {
+        testVoter__setUp();
 
         vm.startPrank(deployer);
 
+        console.log("pair volatile");
         for (uint i; i < pairListVolatile.length; i++) {
             address _gauge = voter.createGauge(
                 address(pairFactory),
@@ -62,9 +80,11 @@ contract TestVoter is TestPairFactory, TestVotingEscrow, TestCLGauge {
             vm.assertTrue(voter.isGauge(_gauge));
             vm.assertTrue(voter.isAlive(_gauge));
 
-            clGaugeList.push(_gauge);
+            gauge[pairListVolatile[i]] = _gauge;
+            console.log("gauge", pairListVolatile[i], _gauge);
         }
 
+        console.log("pair stable");
         for (uint i; i < pairListStable.length; i++) {
             address _gauge = voter.createGauge(
                 address(pairFactory),
@@ -77,9 +97,11 @@ contract TestVoter is TestPairFactory, TestVotingEscrow, TestCLGauge {
             vm.assertTrue(voter.isGauge(_gauge));
             vm.assertTrue(voter.isAlive(_gauge));
 
-            clGaugeList.push(_gauge);
+            gauge[pairListStable[i]] = _gauge;
+            console.log("gauge", pairListStable[i], _gauge);
         }
 
+        console.log("cl pool");
         for (uint i; i < poolList.length; i++) {
             address _gauge = voter.createCLGauge(
                 address(clFactory),
@@ -92,65 +114,78 @@ contract TestVoter is TestPairFactory, TestVotingEscrow, TestCLGauge {
             vm.assertTrue(voter.isGauge(_gauge));
             vm.assertTrue(voter.isAlive(_gauge));
 
-            clGaugeList.push(_gauge);
+            gauge[poolList[i]] = _gauge;
+            console.log("gauge", poolList[i], _gauge);
         }
 
         vm.stopPrank();
     }
 
     /* Vote tests */
-    function testVote() public returns (uint256 tokenId) {
+    function testVote() public {
         testCreateGauge();
 
-        vm.startPrank(user1);
+        console.log("/* Voting */");
+        for (uint i; i < userList.length; i++) {
+            address user1 = userList[i];
 
-        uint256 len = poolList.length;
+            console.log("user", user1);
 
-        address[] memory voteList = new address[](len);
-        uint256[] memory weightList = new uint256[](len);
-        uint256 totalWeight;
+            vm.startPrank(user1);
 
-        uint256[] memory weightsListBefore = new uint256[](len);
-        uint256[] memory votesListBefore = new uint256[](len);
+            uint256 len = poolList.length;
 
-        tokenId = veKitten.tokenOfOwnerByIndex(user1, 0);
+            address[] memory voteList = new address[](len);
+            uint256[] memory weightList = new uint256[](len);
+            uint256 totalWeight;
 
-        for (uint256 i; i < len; i++) {
-            weightsListBefore[i] = voter.weights(poolList[i]);
-            votesListBefore[i] = voter.votes(tokenId, poolList[i]);
+            uint256[] memory weightsListBefore = new uint256[](len);
+            uint256[] memory votesListBefore = new uint256[](len);
 
-            voteList[i] = poolList[i];
-            weightList[i] = vm.randomUint(100, 1000);
+            uint256 tokenId = veKitten.tokenOfOwnerByIndex(user1, 0);
 
-            totalWeight += weightList[i];
+            for (uint256 j; j < len; j++) {
+                weightsListBefore[j] = voter.weights(poolList[j]);
+                votesListBefore[j] = voter.votes(tokenId, poolList[j]);
+
+                voteList[j] = poolList[j];
+                weightList[j] = vm.randomUint(100, 1000);
+
+                console.log("vote", voteList[j], weightList[j]);
+
+                totalWeight += weightList[j];
+            }
+
+            uint256 voteTime = ProtocolTimeLibrary.epochVoteStart(
+                block.timestamp
+            ) + vm.randomUint(1, 1 weeks - 2 hours);
+            vm.warp(voteTime);
+
+            voter.vote(tokenId, voteList, weightList);
+
+            for (uint256 j; j < len; j++) {
+                vm.assertEq(voter.poolVote(tokenId, j), voteList[j]);
+
+                uint256 _poolWeight = (weightList[j] *
+                    veKitten.balanceOfNFT(tokenId)) / totalWeight;
+                vm.assertEq(
+                    voter.weights(voteList[j]),
+                    weightsListBefore[j] + _poolWeight
+                );
+                vm.assertEq(
+                    voter.votes(tokenId, voteList[j]),
+                    votesListBefore[j] + _poolWeight
+                );
+            }
+
+            vm.stopPrank();
         }
-
-        uint256 voteTime = ProtocolTimeLibrary.epochVoteStart(block.timestamp) +
-            vm.randomUint(1, 1 weeks - 2 hours);
-        vm.warp(voteTime);
-
-        voter.vote(tokenId, voteList, weightList);
-
-        for (uint256 i; i < len; i++) {
-            vm.assertEq(voter.poolVote(tokenId, i), voteList[i]);
-
-            uint256 _poolWeight = (weightList[i] *
-                veKitten.balanceOfNFT(tokenId)) / totalWeight;
-            vm.assertEq(
-                voter.weights(voteList[i]),
-                weightsListBefore[i] + _poolWeight
-            );
-            vm.assertEq(
-                voter.votes(tokenId, voteList[i]),
-                votesListBefore[i] + _poolWeight
-            );
-        }
-
-        vm.stopPrank();
     }
 
     function testRevertInvalidGaugeVote() public returns (uint256 tokenId) {
         testCreateGauge();
+
+        address user1 = userList[0];
 
         vm.startPrank(user1);
 
@@ -189,6 +224,8 @@ contract TestVoter is TestPairFactory, TestVotingEscrow, TestCLGauge {
 
     function testRevertKilledGaugeVote() public returns (uint256 tokenId) {
         testCreateGauge();
+
+        address user1 = userList[0];
 
         vm.startPrank(user1);
 
@@ -233,6 +270,8 @@ contract TestVoter is TestPairFactory, TestVotingEscrow, TestCLGauge {
     function testZeroTotalWeightVote() public returns (uint256 tokenId) {
         testCreateGauge();
 
+        address user1 = userList[0];
+
         vm.startPrank(user1);
 
         uint256 len = poolList.length;
@@ -264,6 +303,8 @@ contract TestVoter is TestPairFactory, TestVotingEscrow, TestCLGauge {
 
     function testRevertVoteOnStartEpochOneHour() public {
         testCreateGauge();
+
+        address user1 = userList[0];
 
         vm.startPrank(user1);
 
@@ -301,6 +342,8 @@ contract TestVoter is TestPairFactory, TestVotingEscrow, TestCLGauge {
     function testRevertVoteOnEndEpochOneHour() public {
         testCreateGauge();
 
+        address user1 = userList[0];
+
         vm.startPrank(user1);
 
         uint256 len = poolList.length;
@@ -336,6 +379,8 @@ contract TestVoter is TestPairFactory, TestVotingEscrow, TestCLGauge {
 
     function testWhitelistedVoteOnEndEpochOneHour() public {
         testCreateGauge();
+
+        address user1 = userList[0];
 
         vm.startPrank(user1);
 
@@ -377,19 +422,28 @@ contract TestVoter is TestPairFactory, TestVotingEscrow, TestCLGauge {
 
     /* Poke tests */
     function testPoke() public {
-        uint256 tokenId = testVote();
+        testVote();
 
-        vm.warp(block.timestamp + 1 weeks);
+        vm.warp(block.timestamp + 1 weeks + 1);
+        for (uint i; i < userList.length; i++) {
+            uint256 tokenId = veKitten.tokenOfOwnerByIndex(userList[i], 0);
 
-        // allow anyone to poke
-        voter.poke(tokenId);
+            // allow anyone to poke
+            voter.poke(tokenId);
+        }
     }
 
     function testNotRevertOnPokeVotesForDustWeight() public {
         testCreateGauge();
 
+        address user1 = userList[0];
+
+        vm.prank(kitten.minter());
+        kitten.mint(deployer, 1 ether);
+
         vm.startPrank(deployer);
 
+        kitten.approve(address(veKitten), type(uint256).max);
         uint256 tokenId = veKitten.create_lock_for(
             1 ether,
             2 * 52 weeks,
@@ -557,15 +611,15 @@ contract TestVoter is TestPairFactory, TestVotingEscrow, TestCLGauge {
         voter.updateAll();
 
         vm.startPrank(voter.emergencyCouncil());
-        for (uint i; i < clGaugeList.length; i++) {
-            address gauge = clGaugeList[i];
-            uint256 _claimable = voter.claimable(gauge);
+        for (uint i; i < poolList.length; i++) {
+            address _gauge = gauge[poolList[i]];
+            uint256 _claimable = voter.claimable(_gauge);
             uint256 minterBalBefore = kitten.balanceOf(address(minter));
-            voter.killGauge(gauge);
+            voter.killGauge(_gauge);
             uint256 minterBalAfter = kitten.balanceOf(address(minter));
 
             vm.assertEq(minterBalAfter - minterBalBefore, _claimable);
-            vm.assertTrue(voter.isAlive(gauge) == false);
+            vm.assertTrue(voter.isAlive(_gauge) == false);
         }
         vm.stopPrank();
     }
@@ -579,15 +633,15 @@ contract TestVoter is TestPairFactory, TestVotingEscrow, TestCLGauge {
         voter.updateAll();
 
         vm.startPrank(voter.emergencyCouncil());
-        for (uint i; i < clGaugeList.length; i++) {
-            address gauge = clGaugeList[i];
-            voter.killGauge(gauge);
+        for (uint i; i < poolList.length; i++) {
+            address _gauge = gauge[poolList[i]];
+            voter.killGauge(_gauge);
         }
 
-        for (uint i; i < clGaugeList.length; i++) {
-            address gauge = clGaugeList[i];
+        for (uint i; i < poolList.length; i++) {
+            address _gauge = gauge[poolList[i]];
             vm.expectRevert();
-            voter.killGauge(gauge);
+            voter.killGauge(_gauge);
         }
         vm.stopPrank();
     }
@@ -601,10 +655,10 @@ contract TestVoter is TestPairFactory, TestVotingEscrow, TestCLGauge {
         voter.updateAll();
 
         vm.startPrank(vm.randomAddress());
-        for (uint i; i < clGaugeList.length; i++) {
-            address gauge = clGaugeList[i];
+        for (uint i; i < poolList.length; i++) {
+            address _gauge = gauge[poolList[i]];
             vm.expectRevert();
-            voter.killGauge(gauge);
+            voter.killGauge(_gauge);
         }
 
         vm.stopPrank();
