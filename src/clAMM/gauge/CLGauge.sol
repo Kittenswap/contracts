@@ -18,7 +18,7 @@ import {FixedPoint128} from "../core/libraries/FixedPoint128.sol";
 
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
-import {ERC721Holder} from "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
+import {ERC721HolderUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/utils/ERC721HolderUpgradeable.sol";
 
 library ProtocolTimeLibrary {
     uint256 internal constant WEEK = 7 days;
@@ -57,7 +57,7 @@ contract CLGauge is
     ICLGauge,
     UUPSUpgradeable,
     Ownable2StepUpgradeable,
-    ERC721Holder
+    ERC721HolderUpgradeable
 {
     using EnumerableSet for EnumerableSet.UintSet;
 
@@ -149,6 +149,7 @@ contract CLGauge is
 
         __Ownable_init(msg.sender);
         __UUPSUpgradeable_init();
+        __ERC721Holder_init();
     }
 
     // simple re-entrancy check
