@@ -44,6 +44,10 @@ contract RewardsDistributor is
 
     address public depositor;
 
+    constructor() {
+        _disableInitializers();
+    }
+
     function initialize(address _voting_escrow) external initializer {
         uint _t = (block.timestamp / WEEK) * WEEK;
         start_time = _t;

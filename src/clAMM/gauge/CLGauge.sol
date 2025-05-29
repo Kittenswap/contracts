@@ -124,6 +124,10 @@ contract CLGauge is
     event ClaimFees(address indexed from, uint claimed0, uint claimed1);
     event ClaimRewards(address indexed from, uint amount);
 
+    constructor() {
+        _disableInitializers();
+    }
+
     function initialize(
         address _pool,
         address _internal_bribe,

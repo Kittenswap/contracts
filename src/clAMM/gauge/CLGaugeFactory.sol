@@ -20,6 +20,10 @@ contract CLGaugeFactory is
     address public voter;
     address public nfp;
 
+    constructor() {
+        _disableInitializers();
+    }
+
     function initialize(
         address _ve,
         address _voter,

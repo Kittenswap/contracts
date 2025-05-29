@@ -20,6 +20,10 @@ contract Kitten is IKitten, UUPSUpgradeable, Ownable2StepUpgradeable {
     event Transfer(address indexed from, address indexed to, uint value);
     event Approval(address indexed owner, address indexed spender, uint value);
 
+    constructor() {
+        _disableInitializers();
+    }
+
     function initialize() public initializer {
         minter = msg.sender;
         _mint(msg.sender, 0);

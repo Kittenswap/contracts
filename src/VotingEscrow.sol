@@ -96,6 +96,10 @@ contract VotingEscrow is
     /// @dev Current count of token
     uint internal tokenId;
 
+    constructor() {
+        _disableInitializers();
+    }
+
     /// @notice Contract constructor
     /// @param token_addr `KITTEN` token address
     function initialize(

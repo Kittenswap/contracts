@@ -92,6 +92,10 @@ contract Voter is IVoter, UUPSUpgradeable, Ownable2StepUpgradeable {
     error GaugeNotAlive();
     error NoGauge();
 
+    constructor() {
+        _disableInitializers();
+    }
+
     function initialize(
         address __ve,
         address _factoryRegistry
