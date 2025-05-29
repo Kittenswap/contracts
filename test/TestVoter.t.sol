@@ -663,4 +663,35 @@ contract TestVoter is
 
         vm.stopPrank();
     }
+
+    /* Whitelist tokens */
+    function testWhitelistToken() public {
+        testVote();
+
+        address randomToken = vm.randomAddress();
+        vm.startPrank(voter.governor());
+
+        voter.whitelist(randomToken, true);
+        vm.assertEq(voter.isWhitelisted(randomToken), true);
+        voter.whitelist(randomToken, false);
+        vm.assertEq(voter.isWhitelisted(randomToken), false);
+
+        vm.stopPrank();
+    }
+
+    function testRevertWhitelistToken() public {
+        testVote();
+
+        address randomToken = vm.randomAddress();
+        address randomUser = vm.randomAddress();
+        vm.startPrank(randomUser);
+
+        vm.expectRevert();
+        voter.whitelist(randomToken, true);
+
+        vm.expectRevert();
+        voter.whitelist(randomToken, false);
+
+        vm.stopPrank();
+    }
 }

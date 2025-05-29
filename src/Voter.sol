@@ -83,7 +83,11 @@ contract Voter is IVoter, UUPSUpgradeable, Ownable2StepUpgradeable {
     );
     event Attach(address indexed owner, address indexed gauge, uint tokenId);
     event Detach(address indexed owner, address indexed gauge, uint tokenId);
-    event Whitelisted(address indexed whitelister, address indexed token);
+    event Whitelisted(
+        address indexed whitelister,
+        address indexed token,
+        bool _status
+    );
 
     error GaugeNotAlive();
     error NoGauge();
@@ -127,7 +131,7 @@ contract Voter is IVoter, UUPSUpgradeable, Ownable2StepUpgradeable {
     function init(address[] memory _tokens, address _minter) external {
         require(msg.sender == minter);
         for (uint i = 0; i < _tokens.length; i++) {
-            _whitelist(_tokens[i]);
+            _whitelist(_tokens[i], true);
         }
         minter = _minter;
     }
@@ -264,15 +268,14 @@ contract Voter is IVoter, UUPSUpgradeable, Ownable2StepUpgradeable {
         _vote(tokenId, _poolVote, _weights);
     }
 
-    function whitelist(address _token) public {
+    function whitelist(address _token, bool _status) public {
         require(msg.sender == governor);
-        _whitelist(_token);
+        _whitelist(_token, _status);
     }
 
-    function _whitelist(address _token) internal {
-        require(!isWhitelisted[_token]);
-        isWhitelisted[_token] = true;
-        emit Whitelisted(msg.sender, _token);
+    function _whitelist(address _token, bool _status) internal {
+        isWhitelisted[_token] = _status;
+        emit Whitelisted(msg.sender, _token, _status);
     }
 
     function setWhitelistTokenId(uint256 _tokenId, bool _isWhitelisted) public {
