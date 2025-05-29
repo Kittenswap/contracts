@@ -162,19 +162,16 @@ contract Voter is IVoter, UUPSUpgradeable, Ownable2StepUpgradeable {
                 _updateFor(gauges[_pool]);
                 weights[_pool] -= _votes;
                 votes[_tokenId][_pool] -= _votes;
-                if (_votes > 0) {
-                    IBribe(internal_bribes[gauges[_pool]])._withdraw(
-                        uint256(_votes),
-                        _tokenId
-                    );
-                    IBribe(external_bribes[gauges[_pool]])._withdraw(
-                        uint256(_votes),
-                        _tokenId
-                    );
-                    _totalWeight += _votes;
-                } else {
-                    _totalWeight -= _votes;
-                }
+                IBribe(internal_bribes[gauges[_pool]])._withdraw(
+                    uint256(_votes),
+                    _tokenId
+                );
+                IBribe(external_bribes[gauges[_pool]])._withdraw(
+                    uint256(_votes),
+                    _tokenId
+                );
+                _totalWeight += _votes;
+
                 emit Abstained(_tokenId, _votes);
             }
         }
