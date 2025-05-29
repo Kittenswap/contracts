@@ -401,6 +401,7 @@ contract CLGauge is
             tokenId = tokenIds[msg.sender];
         }
 
+        IVoter(voter).emitDeposit(tokenId, msg.sender, _liquidity);
         emit Deposit(msg.sender, nfpTokenId, tokenId, _liquidity);
     }
 

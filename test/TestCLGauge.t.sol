@@ -174,6 +174,83 @@ contract TestCLGauge is TestVoter {
         }
     }
 
+    function testRevertKilledGaugeDeposit()
+        public
+        returns (uint256 nfpTokenId)
+    {
+        testCLGauge__setUp();
+
+        address user1 = userList[0];
+
+        CLGauge clGauge = CLGauge(gauge[address(poolList[0])]);
+
+        vm.prank(voter.emergencyCouncil());
+        voter.killGauge(address(clGauge));
+
+        address token0 = ICLPool(poolList[0]).token0();
+        address token1 = ICLPool(poolList[0]).token1();
+
+        if (token0 == address(WHYPE) || token1 == address(WHYPE)) {
+            vm.startPrank(user1);
+            vm.deal(user1, 1_000 ether);
+            WHYPE.deposit{value: 1_000 ether}();
+            vm.stopPrank();
+        }
+
+        if (token0 != address(WHYPE)) {
+            vm.startPrank(whale[token0]);
+            IERC20(token0).transfer(
+                user1,
+                IERC20(token0).balanceOf(whale[token0])
+            );
+            vm.stopPrank();
+        }
+
+        if (token1 != address(WHYPE)) {
+            vm.startPrank(whale[token1]);
+            IERC20(token1).transfer(
+                user1,
+                IERC20(token1).balanceOf(whale[token1])
+            );
+            vm.stopPrank();
+        }
+
+        vm.startPrank(user1);
+
+        int24 tickSpacing = 200;
+
+        IERC20(token0).approve(address(nfp), IERC20(token0).balanceOf(user1));
+        IERC20(token1).approve(address(nfp), IERC20(token1).balanceOf(user1));
+        INonfungiblePositionManager.MintParams
+            memory params = INonfungiblePositionManager.MintParams({
+                token0: token0,
+                token1: token1,
+                tickSpacing: tickSpacing,
+                tickLower: (-887272 / tickSpacing) * tickSpacing + tickSpacing,
+                tickUpper: (887272 / tickSpacing) * tickSpacing,
+                amount0Desired: IERC20(token0).balanceOf(user1) / 2,
+                amount1Desired: IERC20(token1).balanceOf(user1) / 2,
+                amount0Min: 0,
+                amount1Min: 0,
+                recipient: user1,
+                deadline: block.timestamp + 60 * 20,
+                sqrtPriceX96: 0
+            });
+        (nfpTokenId, , , ) = nfp.mint(params);
+
+        IERC20(token0).approve(
+            address(swapRouter),
+            IERC20(token0).balanceOf(user1)
+        );
+
+        nfp.setApprovalForAll(address(clGauge), true);
+
+        vm.expectRevert();
+        clGauge.deposit(nfpTokenId, 0);
+
+        vm.stopPrank();
+    }
+
     /* Get reward tests */
     // function testFuzz_GetRewardForNfpTokenId(uint256 emissionAmount) public {
     function testGetRewardForNfpTokenId() public {
