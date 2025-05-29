@@ -620,4 +620,41 @@ contract TestVotingEscrow is Base {
         vm.expectRevert();
         veKitten.ownerOf(tokenId);
     }
+
+    function testInflatedVotingPowerBalanceOfNFTAt() public {
+        _setUp();
+        vm.warp(100 weeks);
+        vm.startPrank(deployer);
+
+        address user1 = userList[0];
+
+        kitten.approve(address(veKitten), type(uint256).max);
+        uint256 tokenId1 = veKitten.create_lock_for(
+            100_000_000 ether,
+            10 weeks,
+            user1
+        );
+
+        vm.warp(block.timestamp + 10 weeks);
+        uint256 tokenId2 = veKitten.create_lock_for(
+            100_000_000 ether,
+            10 weeks,
+            user1
+        );
+
+        uint256 votingPower1 = veKitten.balanceOfNFTAt(
+            tokenId1,
+            block.timestamp - 5 weeks
+        );
+        uint256 votingPower2 = veKitten.balanceOfNFTAt(
+            tokenId2,
+            block.timestamp - 5 weeks
+        );
+
+        //@audit token2 is just created but have much more voting power at the past
+        vm.assertLe(votingPower1, 100_000_000 ether);
+
+        vm.expectRevert();
+        vm.assertLe(votingPower2, 0);
+    }
 }
