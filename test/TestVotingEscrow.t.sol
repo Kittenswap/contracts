@@ -612,4 +612,12 @@ contract TestVotingEscrow is Base {
 
         vm.stopPrank();
     }
+
+    function testRevertInvalidTokenIdOwnerOf() public {
+        testDistributeVeKitten();
+
+        uint256 tokenId = type(uint256).max;
+        vm.expectRevert();
+        veKitten.ownerOf(tokenId);
+    }
 }

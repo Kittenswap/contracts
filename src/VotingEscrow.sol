@@ -193,6 +193,8 @@ contract VotingEscrow is
     /// @dev Returns the address of the owner of the NFT.
     /// @param _tokenId The identifier for an NFT.
     function ownerOf(uint _tokenId) public view returns (address) {
+        address _ownerOf = idToOwner[_tokenId];
+        require(_ownerOf != address(0), "Query for nonexistent token");
         return idToOwner[_tokenId];
     }
 

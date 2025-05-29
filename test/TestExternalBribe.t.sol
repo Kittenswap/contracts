@@ -34,12 +34,13 @@ import {IERC20} from "src/interfaces/IERC20.sol";
 
 import {TestCLFactory} from "test/TestCLFactory.t.sol";
 import {TestBribeFactory} from "test/TestBribeFactory.t.sol";
+import {TestVotingEscrow} from "test/TestVotingEscrow.t.sol";
 
 interface ICLFactoryExtended is ICLFactory {
     function setVoter(address _voter) external;
 }
 
-contract TestExternalBribe is TestBribeFactory {
+contract TestExternalBribe is TestBribeFactory, TestVotingEscrow {
     function testExternalBribe__setUp() public {
         testBribeFactory__setUp();
 
@@ -211,6 +212,7 @@ contract TestExternalBribe is TestBribeFactory {
 
     function testCannotDoubleGetReward() public {
         testExternalBribe__setUp();
+        testDistributeVeKitten();
 
         ExternalBribe _externalBribe = ExternalBribe(
             externalBribe[poolList[0]]
@@ -218,7 +220,7 @@ contract TestExternalBribe is TestBribeFactory {
 
         uint256 EPOCH = 1 weeks;
         uint256 epochStartTime = (block.timestamp / 1 weeks) * 1 weeks + 1;
-        uint256 tokenId = 1;
+        uint256 tokenId = veKitten.tokenOfOwnerByIndex(userList[0], 0);
         uint256 votingPower = 1 ether;
 
         vm.prank(address(deployer));
