@@ -442,6 +442,7 @@ contract Voter is IVoter, UUPSUpgradeable, Ownable2StepUpgradeable {
         require(msg.sender == emergencyCouncil, "not emergency council");
         require(!isAlive[_gauge], "gauge already alive");
         isAlive[_gauge] = true;
+        supplyIndex[_gauge] = index;
         emit GaugeRevived(_gauge);
     }
 

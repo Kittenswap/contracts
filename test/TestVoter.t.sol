@@ -694,4 +694,97 @@ contract TestVoter is
 
         vm.stopPrank();
     }
+
+    function testReviveGauge() public {
+        testVote();
+
+        address pool = poolList[0];
+        address _gauge = gauge[pool];
+
+        address user1 = vm.randomAddress();
+
+        vm.prank(deployer);
+        veKitten.create_lock_for(1 ether, 52 weeks, user1);
+
+        uint256 tokenId = veKitten.tokenOfOwnerByIndex(user1, 0);
+
+        address[] memory voteList = new address[](1);
+        uint256[] memory weightList = new uint256[](1);
+
+        voteList[0] = pool;
+        weightList[0] = 100;
+
+        vm.prank(user1);
+        voter.vote(tokenId, voteList, weightList);
+
+        vm.warp(block.timestamp + 1 weeks);
+
+        minter.update_period();
+        voter.updateAll();
+
+        uint256 claimableEpoch1 = voter.claimable(_gauge);
+        // vm.assertEq(claimableEpoch1, 0);
+
+        vm.prank(voter.emergencyCouncil());
+        voter.killGauge(_gauge);
+
+        vm.warp(block.timestamp + 1 weeks);
+
+        minter.update_period();
+        voter.updateAll();
+
+        uint256 claimableEpoch2 = voter.claimable(_gauge);
+        vm.assertEq(claimableEpoch2, 0);
+
+        for (uint i; i < 10; i++) {
+            vm.warp(block.timestamp + 1 weeks);
+
+            minter.update_period();
+            voter.updateAll();
+        }
+
+        vm.prank(voter.emergencyCouncil());
+        voter.reviveGauge(_gauge);
+
+        vm.warp(block.timestamp + 1 weeks);
+
+        uint256 voterBalBefore = kitten.balanceOf(address(voter));
+        minter.update_period();
+        voter.updateAll();
+        uint256 voterBalAfter = kitten.balanceOf(address(voter));
+
+        uint256 emissions = voterBalAfter - voterBalBefore;
+
+        uint256 poolWeight = voter.weights(pool);
+
+        uint256 claimableEpoch3 = voter.claimable(_gauge);
+        {
+            console.log("emissions", emissions);
+            console.log("weights", poolWeight, voter.totalWeight());
+            console.log(
+                "emitted to pool",
+                (emissions * poolWeight) / voter.totalWeight(),
+                emissions
+            );
+        }
+
+        // percentage emissions should be same
+        vm.assertEq(
+            (((emissions * poolWeight) / voter.totalWeight()) * 1 ether) /
+                emissions,
+            (poolWeight * 1 ether) / voter.totalWeight()
+        );
+    }
+
+    function testRevertNotEmergencyCouncilReviveGauge() public {
+        testVote();
+
+        vm.prank(voter.emergencyCouncil());
+        voter.killGauge(gauge[poolList[0]]);
+
+        address randomUser = vm.randomAddress();
+        vm.prank(randomUser);
+        vm.expectRevert();
+        voter.reviveGauge(gauge[poolList[0]]);
+    }
 }
