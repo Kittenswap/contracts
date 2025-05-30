@@ -677,4 +677,18 @@ contract TestCLGauge is TestVoter {
 
         console.log("totalEmissions", totalEmissions);
     }
+
+    function testRevertNotVoterNotifyRewardAmount() public {
+        testCLGauge__setUp();
+
+        address randomUser = vm.randomAddress();
+        vm.prank(randomUser);
+
+        // only voter can notify rewards once per epoch
+        vm.expectRevert();
+        CLGauge(gauge[address(poolList[0])]).notifyRewardAmount(
+            address(kitten),
+            1 ether
+        );
+    }
 }

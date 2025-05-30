@@ -481,6 +481,7 @@ contract CLGauge is
     function notifyRewardAmount(address token, uint amount) external lock {
         require(amount > 0);
         require(token == kitten);
+        require(msg.sender == address(voter));
 
         _claimFees();
         pool.updateRewardsGrowthGlobal();
