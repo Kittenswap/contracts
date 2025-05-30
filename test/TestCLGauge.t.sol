@@ -35,6 +35,7 @@ import {IERC20} from "src/interfaces/IERC20.sol";
 import {TestCLFactory} from "test/TestCLFactory.t.sol";
 import {TestBribeFactory} from "test/TestBribeFactory.t.sol";
 import {TestVoter} from "test/TestVoter.t.sol";
+import {ProtocolTimeLibrary} from "src/clAMM/libraries/ProtocolTimeLibrary.sol";
 
 interface ICLFactoryExtended is ICLFactory {
     function setVoter(address _voter) external;
@@ -638,5 +639,42 @@ contract TestCLGauge is TestVoter {
         clGauge.transferERC20(address(kitten));
 
         vm.stopPrank();
+    }
+
+    function testEarned() public {
+        testDeposit();
+
+        vm.warp(ProtocolTimeLibrary.epochNext(block.timestamp));
+        voter.distro();
+
+        vm.warp(ProtocolTimeLibrary.epochNext(block.timestamp));
+
+        uint256 totalEmissions;
+        for (uint i; i < userList.length; i++) {
+            address user1 = userList[i];
+
+            console.log("user", user1);
+            for (uint j; j < poolList.length; j++) {
+                address pool = poolList[j];
+
+                console.log(
+                    "pool",
+                    pool,
+                    IERC20(ICLPool(pool).token0()).symbol(),
+                    IERC20(ICLPool(pool).token1()).symbol()
+                );
+
+                CLGauge clGauge = CLGauge(gauge[address(pool)]);
+
+                uint256 nfpTokenId = clGauge.getUserStakedNFPs(user1)[0];
+
+                uint256 amount = clGauge.earned(nfpTokenId);
+                console.log("amount", amount);
+
+                totalEmissions += amount;
+            }
+        }
+
+        console.log("totalEmissions", totalEmissions);
     }
 }

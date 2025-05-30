@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import "../../libraries/Math.sol";
 import "../../interfaces/IBribe.sol";
 import "../../interfaces/IERC20.sol";
 import "./interfaces/ICLGauge.sol";
@@ -19,6 +18,7 @@ import {FixedPoint128} from "../core/libraries/FixedPoint128.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
 import {ERC721HolderUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/utils/ERC721HolderUpgradeable.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 library ProtocolTimeLibrary {
     uint256 internal constant WEEK = 7 days;
@@ -293,9 +293,11 @@ contract CLGauge is
             uint256 reward = rewardRate * timeDelta;
             if (reward > rewardReserve) reward = rewardReserve;
 
-            rewardGrowthGlobalX128 +=
-                (reward * FixedPoint128.Q128) /
-                pool.stakedLiquidity();
+            rewardGrowthGlobalX128 += Math.mulDiv(
+                reward,
+                FixedPoint128.Q128,
+                pool.stakedLiquidity()
+            );
         }
 
         (
@@ -320,14 +322,15 @@ contract CLGauge is
             rewardGrowthGlobalX128
         );
 
-        uint256 rewardGrowthInsideDelta;
-        unchecked {
-            rewardGrowthInsideDelta =
-                rewardGrowthInsideCurrent -
-                rewardGrowthInsideInitial;
-        }
+        uint256 rewardGrowthInsideDelta = rewardGrowthInsideCurrent -
+            rewardGrowthInsideInitial;
 
-        return (rewardGrowthInsideDelta * _liquidity) / FixedPoint128.Q128;
+        return
+            Math.mulDiv(
+                rewardGrowthInsideDelta,
+                _liquidity,
+                FixedPoint128.Q128
+            );
     }
 
     function getUserStakedNFPs(
