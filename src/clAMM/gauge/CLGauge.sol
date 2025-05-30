@@ -19,6 +19,7 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
 import {ERC721HolderUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/utils/ERC721HolderUpgradeable.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 library ProtocolTimeLibrary {
     uint256 internal constant WEEK = 7 days;
@@ -386,7 +387,12 @@ contract CLGauge is
         userStakedNFPs[msg.sender].add(nfpTokenId);
 
         // stake nfp liquidity in pool
-        pool.stake(int128(_liquidity), _tickLower, _tickUpper, true);
+        pool.stake(
+            SafeCast.toInt128(SafeCast.toInt256(uint256(_liquidity))),
+            _tickLower,
+            _tickUpper,
+            true
+        );
 
         // set initial reward growth as reference for calc rewards over time
         uint256 rewardGrowth = pool.getRewardGrowthInside(
@@ -444,7 +450,12 @@ contract CLGauge is
         _getReward(nfpTokenId, msgSender);
 
         if (_liquidity != 0)
-            pool.stake(-int128(_liquidity), _tickLower, _tickUpper, true);
+            pool.stake(
+                -SafeCast.toInt128(SafeCast.toInt256(uint256(_liquidity))),
+                _tickLower,
+                _tickUpper,
+                true
+            );
 
         userStakedNFPs[msg.sender].remove(nfpTokenId);
         nfp.safeTransferFrom(address(this), msg.sender, nfpTokenId);
