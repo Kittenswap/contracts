@@ -237,7 +237,7 @@ contract CLGauge is
         uint256 len = nfpTokenIdList.length;
 
         for (uint256 i; i < len; ) {
-            _getReward(nfpTokenIdList[i], msgSender);
+            _getReward(nfpTokenIdList[i], account);
 
             unchecked {
                 ++i;

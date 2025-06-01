@@ -265,7 +265,10 @@ contract TestCLGauge is TestVoter {
 
         uint256 emissionAmount = kitten.balanceOf(deployer) / 10;
 
-        vm.startPrank(deployer);
+        vm.prank(deployer);
+        kitten.transfer(address(voter), emissionAmount);
+
+        vm.startPrank(address(voter));
 
         kitten.approve(address(clGauge), emissionAmount);
         clGauge.notifyRewardAmount(clGauge.kitten(), emissionAmount);
@@ -302,8 +305,10 @@ contract TestCLGauge is TestVoter {
 
         uint256 emissionAmount = kitten.balanceOf(deployer) / 10;
 
-        vm.startPrank(deployer);
+        vm.prank(deployer);
+        kitten.transfer(address(voter), emissionAmount);
 
+        vm.startPrank(address(voter));
         kitten.approve(address(clGauge), emissionAmount);
         clGauge.notifyRewardAmount(clGauge.kitten(), emissionAmount);
 
@@ -331,6 +336,47 @@ contract TestCLGauge is TestVoter {
         vm.stopPrank();
     }
 
+    function testGetRewardAsVoterForAccount() public {
+        testDeposit();
+
+        address user1 = userList[0];
+
+        CLGauge clGauge = CLGauge(gauge[address(poolList[0])]);
+        uint256 nfpTokenId = clGauge.getUserStakedNFPs(user1)[0];
+
+        uint256 emissionAmount = kitten.balanceOf(deployer) / 10;
+
+        vm.prank(deployer);
+        kitten.transfer(address(voter), emissionAmount);
+
+        vm.startPrank(address(voter));
+        kitten.approve(address(clGauge), emissionAmount);
+        clGauge.notifyRewardAmount(clGauge.kitten(), emissionAmount);
+
+        vm.stopPrank();
+
+        vm.warp((block.timestamp / 1 weeks) * 1 weeks + 7 days);
+
+        vm.startPrank(address(voter));
+
+        address[] memory emptyList;
+
+        uint256 kittenBalBefore = kitten.balanceOf(user1);
+        clGauge.getReward(user1, emptyList);
+        uint256 kittenBalAfter = kitten.balanceOf(user1);
+
+        (, , , , , , , uint128 _liquidity, , , , ) = nfp.positions(nfpTokenId);
+
+        vm.assertApproxEqAbs(
+            kittenBalAfter - kittenBalBefore,
+            (emissionAmount * _liquidity) /
+                ICLPool(poolList[0]).stakedLiquidity(),
+            10 ** 6
+        );
+
+        vm.stopPrank();
+    }
+
     function testRevertNotOwnerGetReward() public {
         testDeposit();
 
@@ -339,7 +385,10 @@ contract TestCLGauge is TestVoter {
 
         uint256 emissionAmount = kitten.balanceOf(deployer) / 10;
 
-        vm.startPrank(deployer);
+        vm.prank(deployer);
+        kitten.transfer(address(voter), emissionAmount);
+
+        vm.startPrank(address(voter));
 
         kitten.approve(address(clGauge), emissionAmount);
         clGauge.notifyRewardAmount(clGauge.kitten(), emissionAmount);
@@ -365,7 +414,10 @@ contract TestCLGauge is TestVoter {
 
         uint256 emissionAmount = kitten.balanceOf(deployer) / 10;
 
-        vm.startPrank(deployer);
+        vm.prank(deployer);
+        kitten.transfer(address(voter), emissionAmount);
+
+        vm.startPrank(address(voter));
 
         kitten.approve(address(clGauge), emissionAmount);
         clGauge.notifyRewardAmount(clGauge.kitten(), emissionAmount);
@@ -393,7 +445,10 @@ contract TestCLGauge is TestVoter {
 
         uint256 emissionAmount = kitten.balanceOf(deployer) / 10;
 
-        vm.startPrank(deployer);
+        vm.prank(deployer);
+        kitten.transfer(address(voter), emissionAmount);
+
+        vm.startPrank(address(voter));
 
         kitten.approve(address(clGauge), emissionAmount);
         clGauge.notifyRewardAmount(clGauge.kitten(), emissionAmount);
@@ -594,7 +649,10 @@ contract TestCLGauge is TestVoter {
 
         uint256 emissionAmount = kitten.balanceOf(deployer) / 10;
 
-        vm.startPrank(deployer);
+        vm.prank(deployer);
+        kitten.transfer(address(voter), emissionAmount);
+
+        vm.startPrank(address(voter));
 
         kitten.approve(address(clGauge), emissionAmount);
         clGauge.notifyRewardAmount(clGauge.kitten(), emissionAmount);
