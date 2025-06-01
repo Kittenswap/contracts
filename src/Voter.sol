@@ -89,7 +89,7 @@ contract Voter is IVoter, UUPSUpgradeable, Ownable2StepUpgradeable {
         bool _status
     );
 
-    error GaugeNotAlive();
+    error NotValidGauge();
     error NoGauge();
 
     constructor() {
@@ -221,7 +221,7 @@ contract Voter is IVoter, UUPSUpgradeable, Ownable2StepUpgradeable {
             address _gauge = gauges[_pool];
 
             if (_gauge == address(0)) revert NoGauge();
-            if (isAlive[_gauge] == false) revert GaugeNotAlive();
+            if (isGauge[_gauge] == false) revert NotValidGauge();
 
             if (isGauge[_gauge]) {
                 uint256 _poolWeight = (_weights[i] * _weight) /
