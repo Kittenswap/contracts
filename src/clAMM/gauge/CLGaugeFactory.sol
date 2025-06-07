@@ -16,36 +16,39 @@ contract CLGaugeFactory is
     Ownable2StepUpgradeable
 {
     address public implementation;
-    address public ve;
+    address public veKitten;
     address public voter;
     address public nfp;
+    address public kitten;
+
+    error NotVoter();
 
     constructor() {
         _disableInitializers();
     }
 
     function initialize(
-        address _ve,
+        address _veKitten,
         address _voter,
-        address _nfp
+        address _nfp,
+        address _kitten
     ) public initializer {
         __Ownable_init(msg.sender);
         __Ownable2Step_init();
         __UUPSUpgradeable_init();
 
         implementation = address(new CLGauge());
-        ve = _ve;
+        veKitten = _veKitten;
         voter = _voter;
         nfp = _nfp;
+        kitten = _kitten;
     }
 
     function createGauge(
         address _pool,
-        address _internal_bribe,
-        address _kitten,
-        bool _isPool
+        address _votingReward
     ) external returns (address) {
-        require(msg.sender == voter, "Only voter can create gauge");
+        if (msg.sender != voter) revert NotVoter();
 
         CLGauge newGauge = CLGauge(
             address(
@@ -55,12 +58,12 @@ contract CLGaugeFactory is
                         CLGauge.initialize,
                         (
                             _pool,
-                            _internal_bribe,
-                            _kitten,
-                            ve,
+                            _votingReward,
+                            kitten,
+                            veKitten,
                             voter,
                             nfp,
-                            _isPool
+                            owner()
                         )
                     )
                 )
@@ -68,8 +71,6 @@ contract CLGaugeFactory is
         );
 
         ICLPool(_pool).setGaugeAndPositionManager(address(newGauge), nfp);
-
-        newGauge.transferOwnership(owner());
 
         return address(newGauge);
     }

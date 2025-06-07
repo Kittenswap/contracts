@@ -1,11 +1,10 @@
 pragma solidity ^0.8.23;
 
-interface IKitten {
-    function totalSupply() external view returns (uint);
-    function balanceOf(address) external view returns (uint);
-    function approve(address spender, uint value) external returns (bool);
-    function transfer(address, uint) external returns (bool);
-    function transferFrom(address, address, uint) external returns (bool);
-    function mint(address, uint) external returns (bool);
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+interface IKitten is IERC20 {
+    error NotMinter();
+
+    function mint(address, uint) external;
     function minter() external returns (address);
 }

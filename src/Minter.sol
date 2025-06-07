@@ -1,43 +1,40 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma solidity ^0.8.23;
 
-import "./libraries/Math.sol";
-import "./interfaces/IMinter.sol";
-import "./interfaces/IRewardsDistributor.sol";
-import "./interfaces/IKitten.sol";
-import "./interfaces/IVoter.sol";
-import "./interfaces/IVotingEscrow.sol";
-
+import {Math} from "./libraries/Math.sol";
+import {RebaseReward} from "./reward/RebaseReward.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-
 import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
-
-// codifies the minting rules as per ve(3,3), abstracted from the token to support any token that allows minting
+import {ProtocolTimeLibrary} from "./clAMM/libraries/ProtocolTimeLibrary.sol";
+import {IMinter} from "./interfaces/IMinter.sol";
+import {IKitten} from "./interfaces/IKitten.sol";
+import {IVoter} from "./interfaces/IVoter.sol";
+import {IVotingEscrow} from "./interfaces/IVotingEscrow.sol";
 
 contract Minter is IMinter, UUPSUpgradeable, Ownable2StepUpgradeable {
-    uint internal constant WEEK = 86400 * 7; // allows minting once per week (reset every Thursday 00:00 UTC)
-    uint internal constant EMISSION = 990; // 99%
-    uint internal constant TAIL_EMISSION = 2;
-    uint internal constant PRECISION = 1000;
-    IKitten public _kitten;
-    IVoter public _voter;
-    IVotingEscrow public _ve;
-    IRewardsDistributor public _rewards_distributor;
-    uint public weekly;
-    uint public active_period;
-    uint internal constant LOCK = 86400 * 7 * 52 * 2;
+    uint256 public constant WEEK = ProtocolTimeLibrary.WEEK; // allows minting once per week (reset every Thursday 00:00 UTC)
 
-    address internal _initializer;
-    address public team;
-    address public pendingTeam;
-    uint public teamRate;
-    uint public constant MAX_TEAM_RATE = 50; // 50 bps = 0.05%
+    uint256 internal constant EMISSION = 9_900; // 99%
+    uint256 internal constant TAIL_EMISSION = 20; // 0.2% of total supply
+    uint256 internal constant PRECISION = 10_000;
+    uint256 public constant MAX_TREASURY_RATE = 500; // 5%
+    uint256 public constant MAX_REBASE_RATE = 4_000; // 40%
+
+    IKitten public kitten;
+    IVoter public voter;
+    IVotingEscrow public veKitten;
+    RebaseReward public rebaseReward;
+    uint256 public treasuryRate;
+    uint256 public rebaseRate;
+    uint256 public nextEmissions; // next epoch emissions
+    uint256 public lastMintedPeriod;
+    address public treasury;
 
     event Mint(
-        address indexed sender,
-        uint weekly,
-        uint circulating_supply,
-        uint circulating_emission
+        address indexed _sender,
+        uint256 _emissions,
+        uint256 _circulatingSupply,
+        uint256 _tailEmissions
     );
 
     constructor() {
@@ -46,111 +43,107 @@ contract Minter is IMinter, UUPSUpgradeable, Ownable2StepUpgradeable {
 
     function initialize(
         address __voter, // the voting & distribution system
-        address __ve, // the ve(3,3) system that will be locked into
-        address __rewards_distributor // the distribution system that ensures users aren't diluted
+        address _veKitten, // the ve(3,3) system that will be locked into
+        address _rebaseReward, // the distribution system that ensures users aren't diluted
+        address _treasury
     ) external initializer {
-        _initializer = msg.sender;
-        team = msg.sender;
-        teamRate = 30; // 30 bps = 0.03%
-        _kitten = IKitten(IVotingEscrow(__ve).token());
-        _voter = IVoter(__voter);
-        _ve = IVotingEscrow(__ve);
-        _rewards_distributor = IRewardsDistributor(__rewards_distributor);
-        active_period = ((block.timestamp + (2 * WEEK)) / WEEK) * WEEK;
-
-        weekly = (1_000_000_000 ether * 2) / 100; // epoch 1 starting emissions of 2% of initial total supply
-
-        __Ownable_init(msg.sender);
         __UUPSUpgradeable_init();
+        __Ownable2Step_init();
+        __Ownable_init(msg.sender);
+
+        treasuryRate = 500; // 5%
+        rebaseRate = 3_000; // 30% bootstrap
+        nextEmissions = (1_000_000_000 ether * 2) / 100; // epoch 1 starting emissions of 2% of initial total supply
+
+        treasury = _treasury;
+        veKitten = IVotingEscrow(_veKitten);
+        kitten = IKitten(veKitten.kitten());
+        voter = IVoter(__voter);
+        rebaseReward = RebaseReward(_rebaseReward);
+
+        // disable minter
+        lastMintedPeriod = type(uint256).max;
     }
 
-    function init() external {
-        require(_initializer == msg.sender, "not initializer");
-        _initializer = address(0);
-        active_period = ((block.timestamp) / WEEK) * WEEK; // allow minter.update_period() to mint new emissions THIS Thursday
-    }
+    /* public functions */
+    function updatePeriod() external returns (bool) {
+        uint256 currentPeriod = getCurrentPeriod();
 
-    function setTeam(address _team) external {
-        require(msg.sender == team, "not team");
-        pendingTeam = _team;
-    }
+        if (currentPeriod > lastMintedPeriod) {
+            uint256 emissions = nextEmissions;
+            nextEmissions = calculateNextEmissions(emissions);
+            uint256 _tailEmissions = tailEmissions();
 
-    function acceptTeam() external {
-        require(msg.sender == pendingTeam, "not pending team");
-        team = pendingTeam;
-    }
-
-    function setTeamRate(uint _teamRate) external {
-        require(msg.sender == team, "not team");
-        require(_teamRate <= MAX_TEAM_RATE, "rate too high");
-        teamRate = _teamRate;
-    }
-
-    // calculate circulating supply as total token supply - locked supply
-    function circulating_supply() public view returns (uint) {
-        return _kitten.totalSupply() - _ve.totalSupply();
-    }
-
-    // emission calculation is 1% of available supply to mint adjusted by circulating / total supply
-    function calculate_emission() public view returns (uint) {
-        return (weekly * EMISSION) / PRECISION;
-    }
-
-    // weekly emission takes the max of calculated (aka target) emission versus circulating tail end emission
-    function weekly_emission() public view returns (uint) {
-        return Math.max(calculate_emission(), circulating_emission());
-    }
-
-    // calculates tail end (infinity) emissions as 0.2% of total supply
-    function circulating_emission() public view returns (uint) {
-        return (circulating_supply() * TAIL_EMISSION) / PRECISION;
-    }
-
-    // calculate inflation and adjust ve balances accordingly
-    function calculate_growth(uint _minted) public view returns (uint) {
-        uint _veTotal = _ve.totalSupply();
-        uint _kittenTotal = _kitten.totalSupply();
-        return
-            (((((_minted * _veTotal) / _kittenTotal) * _veTotal) /
-                _kittenTotal) * _veTotal) /
-            _kittenTotal /
-            2;
-    }
-
-    // update period can only be called once per cycle (1 week)
-    function update_period() external returns (uint) {
-        uint _period = active_period;
-        if (block.timestamp >= _period + WEEK && _initializer == address(0)) {
-            // only trigger if new week
-            _period = (block.timestamp / WEEK) * WEEK;
-            active_period = _period;
-            weekly = weekly_emission();
-
-            uint _growth = calculate_growth(weekly);
-            uint _teamEmissions = (teamRate * (_growth + weekly)) /
-                (PRECISION - teamRate);
-            uint _required = _growth + weekly + _teamEmissions;
-            uint _balanceOf = _kitten.balanceOf(address(this));
-            if (_balanceOf < _required) {
-                _kitten.mint(address(this), _required - _balanceOf);
+            if (_tailEmissions > emissions) {
+                emissions = _tailEmissions;
             }
 
-            require(_kitten.transfer(team, _teamEmissions));
-            require(_kitten.transfer(address(_rewards_distributor), _growth));
-            _rewards_distributor.checkpoint_token(); // checkpoint token balance that was just minted in rewards distributor
-            _rewards_distributor.checkpoint_total_supply(); // checkpoint supply
+            uint256 rebase = calculateRebase(emissions);
+            uint256 treasuryEmissions = ((emissions + rebase) * treasuryRate) /
+                PRECISION;
 
-            _kitten.approve(address(_voter), weekly);
-            _voter.notifyRewardAmount(weekly);
+            uint256 mintAmount = emissions + rebase + treasuryEmissions;
+            uint256 kittenBal = kitten.balanceOf(address(this));
+            if (kittenBal < mintAmount) {
+                kitten.mint(address(this), mintAmount - kittenBal);
+            }
+
+            require(kitten.transfer(treasury, treasuryEmissions));
+            kitten.approve(address(rebaseReward), rebase);
+            rebaseReward.notifyRewardAmount(rebase);
+
+            kitten.approve(address(voter), emissions);
+            voter.notifyRewardAmount(emissions);
 
             emit Mint(
                 msg.sender,
-                weekly,
-                circulating_supply(),
-                circulating_emission()
+                emissions,
+                circulatingSupply(),
+                _tailEmissions
             );
+
+            return true;
         }
-        return _period;
+        return false;
+    }
+
+    /* view functions */
+    function circulatingSupply() public view returns (uint256) {
+        return kitten.totalSupply() - kitten.balanceOf(address(veKitten));
+    }
+
+    function calculateNextEmissions(
+        uint256 _currentEmissions
+    ) public pure returns (uint256) {
+        return (_currentEmissions * EMISSION) / PRECISION;
+    }
+
+    function tailEmissions() public view returns (uint256) {
+        return (circulatingSupply() * TAIL_EMISSION) / PRECISION;
+    }
+
+    function calculateRebase(uint256 _minted) public view returns (uint256) {
+        return (_minted * rebaseRate) / PRECISION;
+    }
+
+    function getCurrentPeriod() public view returns (uint256) {
+        return block.timestamp / WEEK;
+    }
+
+    /* authorized functions */
+    function start() external {
+        if (msg.sender != address(voter)) revert NotVoter();
+
+        lastMintedPeriod = getCurrentPeriod(); // set the current period as epoch 0, and allows minting for epoch 1
+    }
+
+    function setTreasury(address _treasury) external onlyOwner {
+        treasury = _treasury;
+    }
+
+    function setTreasuryRate(uint256 _treasuryRate) external onlyOwner {
+        if (treasuryRate > MAX_TREASURY_RATE) revert TreasuryRateTooHigh();
+        treasuryRate = _treasuryRate;
     }
 
     function _authorizeUpgrade(

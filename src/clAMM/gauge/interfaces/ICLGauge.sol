@@ -1,9 +1,8 @@
 pragma solidity ^0.8.23;
 
 interface ICLGauge {
-    function notifyRewardAmount(address token, uint amount) external;
+    function notifyRewardAmount(uint256 amount) external;
     function getReward(address account, address[] calldata tokens) external;
-    function left(address token) external view returns (uint);
-    function isForPair() external view returns (bool);
-    function claimFees() external returns (uint claimed0, uint claimed1);
+    function left() external view returns (uint256);
+    function claimFees() external returns (uint256 claimed0, uint256 claimed1);
 }

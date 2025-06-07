@@ -15,3 +15,7 @@ optimizer_runs = 200
 auto_detect_solc = true
 
 fs_permissions = [{ access = "read", path = "./"}]
+
+gas_reports = ["*"]
+
+allow_internal_expect_revert = true

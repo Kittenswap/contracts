@@ -1,9 +1,14 @@
 pragma solidity ^0.8.23;
 
 interface IGauge {
-    function notifyRewardAmount(address token, uint amount) external;
-    function getReward(address account, address[] memory tokens) external;
-    function claimFees() external returns (uint claimed0, uint claimed1);
-    function left(address token) external view returns (uint);
-    function isForPair() external view returns (bool);
+    /* public functions */
+    function deposit(uint256 _amount) external;
+    function withdraw(uint256 _amount) external;
+    function getReward(address _account) external;
+
+    /* view functions */
+    function left() external view returns (uint256);
+
+    /* authorized functions */
+    function notifyRewardAmount(uint256 amount) external;
 }

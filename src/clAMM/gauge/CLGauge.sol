@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import "../../interfaces/IBribe.sol";
 import "../../interfaces/IERC20.sol";
 import "./interfaces/ICLGauge.sol";
 import {IVoter} from "../../interfaces/IVoter.sol";
@@ -20,6 +19,7 @@ import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/acces
 import {ERC721HolderUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/utils/ERC721HolderUpgradeable.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+import {VotingReward} from "../../reward/VotingReward.sol";
 
 library ProtocolTimeLibrary {
     uint256 internal constant WEEK = 7 days;
@@ -82,27 +82,24 @@ contract CLGauge is
     event Deposit(
         address indexed from,
         uint256 nfpTokenId,
-        uint256 tokenId,
         uint256 liquidityStaked
     );
     event Withdraw(
         address indexed from,
         uint256 nfpTokenId,
-        uint tokenId,
         uint liquidityUnstaked
     );
 
     /* errors */
     error CLGauge__InvalidTokenId();
+    error NotGaugeOrNotAlive();
 
     address public _ve; // the ve token used for gauges
-    address public internal_bribe;
+    address public votingReward;
     address public voter;
 
     uint public derivedSupply;
     mapping(address => uint) public derivedBalances;
-
-    bool public isForPair;
 
     uint internal constant PRECISION = 10 ** 18;
     uint internal constant MAX_REWARD_TOKENS = 16;
@@ -110,8 +107,6 @@ contract CLGauge is
     // default snx staking contract implementation
     uint public rewardRate;
     uint public periodFinish;
-
-    mapping(address => uint) public tokenIds;
 
     uint public totalSupply;
     mapping(address => uint) public balanceOf;
@@ -131,15 +126,15 @@ contract CLGauge is
 
     function initialize(
         address _pool,
-        address _internal_bribe,
+        address _votingReward,
         address _kitten,
         address __ve,
         address _voter,
         address _nfp,
-        bool _forPair
+        address _initialOwner
     ) external initializer {
         pool = ICLPool(_pool);
-        internal_bribe = _internal_bribe;
+        votingReward = _votingReward;
         kitten = _kitten;
         _ve = __ve;
         voter = _voter;
@@ -149,10 +144,9 @@ contract CLGauge is
         token1 = pool.token1();
         tickSpacing = pool.tickSpacing();
 
-        isForPair = _forPair;
         _unlocked = 1;
 
-        __Ownable_init(msg.sender);
+        __Ownable_init(_initialOwner);
         __UUPSUpgradeable_init();
         __ERC721Holder_init();
     }
@@ -182,8 +176,6 @@ contract CLGauge is
     }
 
     function _claimFees() internal returns (uint claimed0, uint claimed1) {
-        if (!isForPair) return (0, 0);
-
         uint256 token0BalBefore = IERC20(token0).balanceOf(address(this));
         uint256 token1BalBefore = IERC20(token1).balanceOf(address(this));
         (claimed0, claimed1) = pool.collectFees();
@@ -195,26 +187,26 @@ contract CLGauge is
             uint _fees1 = fees1 + claimed1;
 
             if (token0BalAfter - token0BalBefore == claimed0) {
-                if (
-                    _fees0 > IBribe(internal_bribe).left(token0) &&
-                    _fees0 / ProtocolTimeLibrary.WEEK > 0
-                ) {
+                if (_fees0 > 0) {
                     fees0 = 0;
-                    _safeApprove(token0, internal_bribe, _fees0);
-                    IBribe(internal_bribe).notifyRewardAmount(token0, _fees0);
+                    _safeApprove(token0, votingReward, _fees0);
+                    VotingReward(votingReward).notifyRewardAmount(
+                        token0,
+                        _fees0
+                    );
                 } else {
                     fees0 = _fees0;
                 }
                 emit ClaimFees(msg.sender, claimed0, 0);
             }
             if (token1BalAfter - token1BalBefore == claimed1) {
-                if (
-                    _fees1 > IBribe(internal_bribe).left(token1) &&
-                    _fees1 / ProtocolTimeLibrary.WEEK > 0
-                ) {
+                if (_fees1 > 0) {
                     fees1 = 0;
-                    _safeApprove(token1, internal_bribe, _fees1);
-                    IBribe(internal_bribe).notifyRewardAmount(token1, _fees1);
+                    _safeApprove(token1, votingReward, _fees1);
+                    VotingReward(votingReward).notifyRewardAmount(
+                        token1,
+                        _fees1
+                    );
                 } else {
                     fees1 = _fees1;
                 }
@@ -351,10 +343,12 @@ contract CLGauge is
     }
 
     // deposit NFP tokenId
-    function deposit(
-        uint256 nfpTokenId,
-        uint256 tokenId
-    ) public lock actionLock {
+    function deposit(uint256 nfpTokenId) public lock actionLock {
+        if (
+            IVoter(voter).isGauge(address(this)) == false ||
+            IVoter(voter).isAlive(address(this)) == false
+        ) revert NotGaugeOrNotAlive();
+
         (
             ,
             ,
@@ -407,20 +401,7 @@ contract CLGauge is
         rewardGrowthInside[nfpTokenId] = rewardGrowth;
         lastUpdateTime[nfpTokenId] = block.timestamp;
 
-        // attach ve
-        if (tokenId > 0) {
-            require(IVotingEscrow(_ve).ownerOf(tokenId) == msg.sender);
-            if (tokenIds[msg.sender] == 0) {
-                tokenIds[msg.sender] = tokenId;
-                IVoter(voter).attachTokenToGauge(tokenId, msg.sender);
-            }
-            require(tokenIds[msg.sender] == tokenId);
-        } else {
-            tokenId = tokenIds[msg.sender];
-        }
-
-        IVoter(voter).emitDeposit(tokenId, msg.sender, _liquidity);
-        emit Deposit(msg.sender, nfpTokenId, tokenId, _liquidity);
+        emit Deposit(msg.sender, nfpTokenId, _liquidity);
     }
 
     function withdraw(uint nfpTokenId) public lock actionLock {
@@ -464,27 +445,17 @@ contract CLGauge is
         userStakedNFPs[msg.sender].remove(nfpTokenId);
         nfp.safeTransferFrom(address(this), msg.sender, nfpTokenId);
 
-        uint tokenId = tokenIds[msg.sender];
-        if (tokenId > 0) {
-            require(tokenId == tokenIds[msg.sender]);
-            tokenIds[msg.sender] = 0;
-            IVoter(voter).detachTokenFromGauge(tokenId, msg.sender);
-        } else {
-            tokenId = tokenIds[msg.sender];
-        }
-
-        emit Withdraw(msg.sender, nfpTokenId, tokenId, _liquidity);
+        emit Withdraw(msg.sender, nfpTokenId, _liquidity);
     }
 
-    function left(address token) external view returns (uint) {
+    function left() external view returns (uint) {
         if (block.timestamp >= periodFinish) return 0;
         uint _remaining = periodFinish - block.timestamp;
         return _remaining * rewardRate;
     }
 
-    function notifyRewardAmount(address token, uint amount) external lock {
+    function notifyRewardAmount(uint amount) external lock {
         require(amount > 0);
-        require(token == kitten);
         require(msg.sender == address(voter));
 
         _claimFees();
