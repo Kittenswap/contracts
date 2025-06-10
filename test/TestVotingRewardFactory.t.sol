@@ -42,62 +42,40 @@ import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap
 import {ProtocolTimeLibrary} from "src/clAMM/libraries/ProtocolTimeLibrary.sol";
 
 /* tests */
-import {Base} from "test/base/Base.t.sol";
+import {TestVoter} from "test/TestVoter.t.sol";
 
-interface ICLFactoryExtended is ICLFactory {
-    function setVoter(address _voter) external;
-}
+contract TestVotingRewardFactory is TestVoter {
+    bool VotingRewardFactory__setUp;
+    function testVotingRewardFactory__setUp() public {
+        test_Vote();
 
-contract TestPairFactory is Base {
-    address[] pairListVolatile;
-    address[] pairListStable;
-
-    bool PairFactory__setUp;
-    function testPairFactory__setUp() public {
-        _setUp();
-
-        if (PairFactory__setUp) return;
-        PairFactory__setUp = true;
-
-        vm.startPrank(deployer);
-
-        for (uint i; i < tokenList.length; i++) {
-            for (uint j; j < i; j++) {
-                address pairVolatile = pairFactory.getPair(
-                    tokenList[i],
-                    tokenList[j],
-                    false
-                );
-                address pairStable = pairFactory.getPair(
-                    tokenList[i],
-                    tokenList[j],
-                    true
-                );
-
-                if (pairVolatile != address(0)) {
-                    pairListVolatile.push(pairVolatile);
-                }
-                if (pairStable != address(0)) {
-                    pairListStable.push(pairStable);
-                }
-            }
-        }
+        if (VotingRewardFactory__setUp) return;
+        VotingRewardFactory__setUp = true;
 
         vm.stopPrank();
+    }
 
-        console.log("tokenList");
-        for (uint i; i < tokenList.length; i++) {
-            console.log("i", i, tokenList[i]);
-        }
+    function test_CreateVotingReward() public {
+        testVoter__setUp();
 
-        console.log("pairListVolatile");
-        for (uint i; i < pairListVolatile.length; i++) {
-            console.log("i", i, pairListVolatile[i]);
-        }
+        vm.startPrank(address(voter));
+        VotingReward votingReward = VotingReward(
+            votingRewardFactory.createVotingReward()
+        );
+        vm.assertEq(address(votingReward.voter()), address(voter));
+        vm.assertEq(address(votingReward.veKitten()), address(veKitten));
+        vm.assertEq(votingReward.owner(), deployer);
+        vm.assertEq(votingReward.periodInit(), block.timestamp / 1 weeks);
+        vm.stopPrank();
+    }
 
-        console.log("pairListStable");
-        for (uint i; i < pairListStable.length; i++) {
-            console.log("i", i, pairListStable[i]);
-        }
+    function test_RevertIf_NotVoter_CreateVotingReward() public {
+        testVoter__setUp();
+
+        address randomUser = vm.randomAddress();
+        vm.startPrank(randomUser);
+        vm.expectRevert();
+        votingRewardFactory.createVotingReward();
+        vm.stopPrank();
     }
 }

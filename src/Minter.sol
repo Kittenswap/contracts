@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-pragma solidity ^0.8.23;
+pragma solidity ^0.8.28;
 
 import {Math} from "./libraries/Math.sol";
 import {RebaseReward} from "./reward/RebaseReward.sol";

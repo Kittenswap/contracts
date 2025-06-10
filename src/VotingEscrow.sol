@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.23;
+pragma solidity ^0.8.28;
 
 import {IERC721, IERC721Metadata} from "openzeppelin-contracts/contracts/token/ERC721/extensions/IERC721Metadata.sol";
 import {IERC721Receiver} from "openzeppelin-contracts/contracts/token/ERC721/IERC721Receiver.sol";
@@ -19,10 +19,10 @@ contract VotingEscrow is
     ERC721EnumerableUpgradeable,
     ReentrancyGuardUpgradeable
 {
-    uint256 internal constant WEEK = ProtocolTimeLibrary.WEEK;
-    uint256 internal constant MAXTIME = 2 * 365 days;
-    int128 internal constant iMAXTIME = 2 * 365 days;
-    uint256 internal constant MULTIPLIER = 1 ether;
+    uint256 public constant WEEK = ProtocolTimeLibrary.WEEK;
+    uint256 public constant MAXTIME = 2 * 365 days;
+    int128 public constant iMAXTIME = 2 * 365 days;
+    uint256 public constant MULTIPLIER = 1 ether;
 
     address public kitten;
     address public voter;
@@ -30,7 +30,7 @@ contract VotingEscrow is
 
     mapping(uint256 => Point) public point_history; // epoch -> unsigned point
 
-    uint256 internal tokenId;
+    uint256 public tokenId; // current tokenId
 
     mapping(uint256 => uint256) public user_point_epoch;
     mapping(uint256 => Point[1000000000]) public user_point_history; // user -> Point[user_epoch]

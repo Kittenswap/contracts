@@ -1,4 +1,4 @@
-pragma solidity ^0.8.23;
+pragma solidity ^0.8.28;
 
 interface IVoter {
     event GaugeCreated(
@@ -51,6 +51,8 @@ interface IVoter {
     error GaugeAlive();
     error NotApprovedOrOwner();
     error AlreadyVoted();
+    error InvalidParameters();
+    error AlreadyVotedForPool();
 
     function isWhitelisted(address token) external view returns (bool);
     function notifyRewardAmount(uint amount) external;

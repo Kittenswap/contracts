@@ -1,49 +1,23 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.23;
-
-import "../../interfaces/IERC20.sol";
-import "./interfaces/ICLGauge.sol";
-import {IVoter} from "../../interfaces/IVoter.sol";
-import {IVotingEscrow} from "../../interfaces/IVotingEscrow.sol";
-
-import {INonfungiblePositionManager} from "../periphery/interfaces/INonfungiblePositionManager.flatten.sol";
+pragma solidity ^0.8.28;
 
 import {EnumerableSet} from "openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol";
-
-import {ICLPool} from "../core/interfaces/ICLPool.sol";
-
-import {FixedPoint128} from "../core/libraries/FixedPoint128.sol";
-
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
 import {ERC721HolderUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/utils/ERC721HolderUpgradeable.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
-import {VotingReward} from "../../reward/VotingReward.sol";
-
-library ProtocolTimeLibrary {
-    uint256 internal constant WEEK = 7 days;
-
-    /// @dev Returns start of epoch based on current timestamp
-    function epochStart(uint256 timestamp) internal pure returns (uint256) {
-        return timestamp - (timestamp % WEEK);
-    }
-
-    /// @dev Returns start of next epoch / end of current epoch
-    function epochNext(uint256 timestamp) internal pure returns (uint256) {
-        return timestamp - (timestamp % WEEK) + WEEK;
-    }
-
-    /// @dev Returns start of voting window
-    function epochVoteStart(uint256 timestamp) internal pure returns (uint256) {
-        return timestamp - (timestamp % WEEK) + 1 hours;
-    }
-
-    /// @dev Returns end of voting window / beginning of unrestricted voting window
-    function epochVoteEnd(uint256 timestamp) internal pure returns (uint256) {
-        return timestamp - (timestamp % WEEK) + WEEK - 1 hours;
-    }
-}
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {FixedPoint128} from "../core/libraries/FixedPoint128.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import {ICLGauge} from "./interfaces/ICLGauge.sol";
+import {IVoter} from "../../interfaces/IVoter.sol";
+import {IVotingEscrow} from "../../interfaces/IVotingEscrow.sol";
+import {INonfungiblePositionManager} from "../periphery/interfaces/INonfungiblePositionManager.flatten.sol";
+import {ICLPool} from "../core/interfaces/ICLPool.sol";
+import {ProtocolTimeLibrary} from "../libraries/ProtocolTimeLibrary.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IVotingReward} from "../../interfaces/IVotingReward.sol";
 
 /* 
 Changes to original Gauge to support CL:
@@ -58,109 +32,43 @@ contract CLGauge is
     ICLGauge,
     UUPSUpgradeable,
     Ownable2StepUpgradeable,
-    ERC721HolderUpgradeable
+    ERC721HolderUpgradeable,
+    ReentrancyGuardUpgradeable
 {
     using EnumerableSet for EnumerableSet.UintSet;
+    using SafeERC20 for IERC20;
+
+    uint256 internal constant PRECISION = 10 ** 18;
 
     INonfungiblePositionManager public nfp;
-    address public token0;
-    address public token1;
+    IERC20 public kitten;
+    ICLPool public pool;
+    IERC20 public token0;
+    IERC20 public token1;
     int24 public tickSpacing;
 
+    address public voter;
+    IVotingReward public votingReward;
+
     mapping(address => EnumerableSet.UintSet) internal userStakedNFPs;
-
-    ICLPool public pool;
-
     mapping(uint256 nfpTokenId => uint256) public rewardGrowthInside;
     mapping(uint256 nfpTokenId => uint256) public lastUpdateTime;
-
     mapping(uint256 nfpTokenId => uint256) public rewards;
 
-    address public kitten;
-
-    /* events */
-    event Deposit(
-        address indexed from,
-        uint256 nfpTokenId,
-        uint256 liquidityStaked
-    );
-    event Withdraw(
-        address indexed from,
-        uint256 nfpTokenId,
-        uint liquidityUnstaked
-    );
-
-    /* errors */
-    error CLGauge__InvalidTokenId();
-    error NotGaugeOrNotAlive();
-
-    address public _ve; // the ve token used for gauges
-    address public votingReward;
-    address public voter;
-
-    uint public derivedSupply;
-    mapping(address => uint) public derivedBalances;
-
-    uint internal constant PRECISION = 10 ** 18;
-    uint internal constant MAX_REWARD_TOKENS = 16;
+    uint256 public derivedSupply;
+    mapping(address => uint256) public derivedBalances;
 
     // default snx staking contract implementation
-    uint public rewardRate;
-    uint public periodFinish;
-
-    uint public totalSupply;
-    mapping(address => uint) public balanceOf;
-
+    uint256 public rewardRate;
+    uint256 public periodFinish;
+    uint256 public totalSupply;
+    mapping(address => uint256) public balanceOf;
     mapping(address => bool) public isReward;
 
-    uint public fees0;
-    uint public fees1;
+    uint256 public fees0;
+    uint256 public fees1;
 
-    event NotifyReward(address indexed from, uint amount);
-    event ClaimFees(address indexed from, uint claimed0, uint claimed1);
-    event ClaimRewards(address indexed from, uint amount);
-
-    constructor() {
-        _disableInitializers();
-    }
-
-    function initialize(
-        address _pool,
-        address _votingReward,
-        address _kitten,
-        address __ve,
-        address _voter,
-        address _nfp,
-        address _initialOwner
-    ) external initializer {
-        pool = ICLPool(_pool);
-        votingReward = _votingReward;
-        kitten = _kitten;
-        _ve = __ve;
-        voter = _voter;
-
-        nfp = INonfungiblePositionManager(_nfp);
-        token0 = pool.token0();
-        token1 = pool.token1();
-        tickSpacing = pool.tickSpacing();
-
-        _unlocked = 1;
-
-        __Ownable_init(_initialOwner);
-        __UUPSUpgradeable_init();
-        __ERC721Holder_init();
-    }
-
-    // simple re-entrancy check
-    uint internal _unlocked;
-    modifier lock() {
-        require(_unlocked == 1);
-        _unlocked = 2;
-        _;
-        _unlocked = 1;
-    }
-
-    mapping(uint _blockNumber => mapping(address _user => bool)) userBlockLocked; // 1 action per block, eg deposit or withdraw
+    mapping(uint256 _blockNumber => mapping(address _user => bool)) userBlockLocked; // 1 action per block, eg deposit or withdraw
 
     modifier actionLock() {
         require(
@@ -171,29 +79,62 @@ contract CLGauge is
         _;
     }
 
-    function claimFees() external lock returns (uint claimed0, uint claimed1) {
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(
+        address _pool,
+        address _votingReward,
+        address _kitten,
+        address _voter,
+        address _nfp,
+        address _initialOwner
+    ) external initializer {
+        __UUPSUpgradeable_init();
+        __Ownable2Step_init();
+        __Ownable_init(_initialOwner);
+        __ERC721Holder_init();
+        __ReentrancyGuard_init();
+
+        nfp = INonfungiblePositionManager(_nfp);
+        pool = ICLPool(_pool);
+        token0 = IERC20(pool.token0());
+        token1 = IERC20(pool.token1());
+        votingReward = IVotingReward(_votingReward);
+        kitten = IERC20(_kitten);
+        voter = _voter;
+
+        tickSpacing = pool.tickSpacing();
+    }
+
+    function claimFees()
+        external
+        nonReentrant
+        returns (uint256 claimed0, uint256 claimed1)
+    {
         return _claimFees();
     }
 
-    function _claimFees() internal returns (uint claimed0, uint claimed1) {
-        uint256 token0BalBefore = IERC20(token0).balanceOf(address(this));
-        uint256 token1BalBefore = IERC20(token1).balanceOf(address(this));
+    function _claimFees()
+        internal
+        returns (uint256 claimed0, uint256 claimed1)
+    {
+        uint256 token0BalBefore = token0.balanceOf(address(this));
+        uint256 token1BalBefore = token1.balanceOf(address(this));
         (claimed0, claimed1) = pool.collectFees();
-        uint256 token0BalAfter = IERC20(token0).balanceOf(address(this));
-        uint256 token1BalAfter = IERC20(token1).balanceOf(address(this));
+        uint256 token0BalAfter = token0.balanceOf(address(this));
+        uint256 token1BalAfter = token1.balanceOf(address(this));
 
         if (claimed0 > 0 || claimed1 > 0) {
-            uint _fees0 = fees0 + claimed0;
-            uint _fees1 = fees1 + claimed1;
+            uint256 _fees0 = fees0 + claimed0;
+            uint256 _fees1 = fees1 + claimed1;
 
             if (token0BalAfter - token0BalBefore == claimed0) {
                 if (_fees0 > 0) {
                     fees0 = 0;
-                    _safeApprove(token0, votingReward, _fees0);
-                    VotingReward(votingReward).notifyRewardAmount(
-                        token0,
-                        _fees0
-                    );
+                    token0.safeIncreaseAllowance(address(votingReward), _fees0);
+                    votingReward.notifyRewardAmount(address(token0), _fees0);
                 } else {
                     fees0 = _fees0;
                 }
@@ -202,11 +143,8 @@ contract CLGauge is
             if (token1BalAfter - token1BalBefore == claimed1) {
                 if (_fees1 > 0) {
                     fees1 = 0;
-                    _safeApprove(token1, votingReward, _fees1);
-                    VotingReward(votingReward).notifyRewardAmount(
-                        token1,
-                        _fees1
-                    );
+                    token1.safeIncreaseAllowance(address(votingReward), _fees1);
+                    votingReward.notifyRewardAmount(address(token1), _fees1);
                 } else {
                     fees1 = _fees1;
                 }
@@ -215,10 +153,7 @@ contract CLGauge is
         }
     }
 
-    function getReward(
-        address account,
-        address[] calldata tokens
-    ) external lock {
+    function getReward(address account) external nonReentrant {
         address msgSender = msg.sender;
         require(
             msgSender == account || msgSender == voter,
@@ -237,7 +172,7 @@ contract CLGauge is
         }
     }
 
-    function getReward(uint256 nfpTokenId) external lock {
+    function getReward(uint256 nfpTokenId) external nonReentrant {
         address msgSender = msg.sender;
         require(userStakedNFPs[msgSender].contains(nfpTokenId), "Not Owner");
 
@@ -254,8 +189,7 @@ contract CLGauge is
 
         if (reward > 0) {
             delete rewards[nfpTokenId];
-            _safeApprove(kitten, address(this), reward);
-            _safeTransferFrom(kitten, address(this), owner, reward);
+            kitten.safeTransfer(owner, reward);
             emit ClaimRewards(owner, reward);
         }
     }
@@ -276,7 +210,7 @@ contract CLGauge is
         );
     }
 
-    function earned(uint256 nfpTokenId) public view returns (uint) {
+    function earned(uint256 nfpTokenId) public view returns (uint256) {
         uint256 timeDelta = block.timestamp - pool.lastUpdated();
 
         uint256 rewardGrowthGlobalX128 = pool.rewardGrowthGlobalX128();
@@ -343,7 +277,7 @@ contract CLGauge is
     }
 
     // deposit NFP tokenId
-    function deposit(uint256 nfpTokenId) public lock actionLock {
+    function deposit(uint256 nfpTokenId) public nonReentrant actionLock {
         if (
             IVoter(voter).isGauge(address(this)) == false ||
             IVoter(voter).isAlive(address(this)) == false
@@ -366,10 +300,10 @@ contract CLGauge is
 
         // collect for nfpTokenId prior to deposit into gauge
         if (
-            _token0 != token0 ||
-            _token1 != token1 ||
+            _token0 != address(token0) ||
+            _token1 != address(token1) ||
             _tickSpacing != tickSpacing
-        ) revert CLGauge__InvalidTokenId();
+        ) revert InvalidTokenId();
 
         nfp.collect(
             INonfungiblePositionManager.CollectParams({
@@ -404,7 +338,7 @@ contract CLGauge is
         emit Deposit(msg.sender, nfpTokenId, _liquidity);
     }
 
-    function withdraw(uint nfpTokenId) public lock actionLock {
+    function withdraw(uint256 nfpTokenId) public nonReentrant actionLock {
         address msgSender = msg.sender;
         require(userStakedNFPs[msgSender].contains(nfpTokenId), "Not Owner");
 
@@ -448,13 +382,13 @@ contract CLGauge is
         emit Withdraw(msg.sender, nfpTokenId, _liquidity);
     }
 
-    function left() external view returns (uint) {
+    function left() external view returns (uint256) {
         if (block.timestamp >= periodFinish) return 0;
-        uint _remaining = periodFinish - block.timestamp;
+        uint256 _remaining = periodFinish - block.timestamp;
         return _remaining * rewardRate;
     }
 
-    function notifyRewardAmount(uint amount) external lock {
+    function notifyRewardAmount(uint256 amount) external nonReentrant {
         require(amount > 0);
         require(msg.sender == address(voter));
 
@@ -462,11 +396,11 @@ contract CLGauge is
         pool.updateRewardsGrowthGlobal();
 
         address msgSender = msg.sender;
-        uint timestamp = block.timestamp;
-        uint epochDurationLeft = ProtocolTimeLibrary.epochNext(timestamp) -
+        uint256 timestamp = block.timestamp;
+        uint256 epochDurationLeft = ProtocolTimeLibrary.epochNext(timestamp) -
             timestamp;
 
-        _safeTransferFrom(kitten, msgSender, address(this), amount);
+        kitten.safeTransferFrom(msgSender, address(this), amount);
         amount = amount + pool.rollover();
 
         uint256 nextPeriodFinish = timestamp + epochDurationLeft;
@@ -489,7 +423,7 @@ contract CLGauge is
         }
 
         require(rewardRate > 0);
-        uint balance = IERC20(kitten).balanceOf(address(this));
+        uint256 balance = IERC20(kitten).balanceOf(address(this));
         require(
             rewardRate <= balance / epochDurationLeft,
             "Provided reward too high"
@@ -513,18 +447,6 @@ contract CLGauge is
                 to,
                 value
             )
-        );
-        require(success && (data.length == 0 || abi.decode(data, (bool))));
-    }
-
-    function _safeApprove(
-        address token,
-        address spender,
-        uint256 value
-    ) internal {
-        require(token.code.length > 0);
-        (bool success, bytes memory data) = token.call(
-            abi.encodeWithSelector(IERC20.approve.selector, spender, value)
         );
         require(success && (data.length == 0 || abi.decode(data, (bool))));
     }

@@ -1,4 +1,4 @@
-pragma solidity ^0.8.23;
+pragma solidity ^0.8.28;
 
 import {Base64} from "./libraries/Base64.sol";
 import {IVeArtProxy} from "./interfaces/IVeArtProxy.sol";

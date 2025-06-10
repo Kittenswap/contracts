@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.23;
-
-import {Gauge} from "./Gauge.sol";
+pragma solidity ^0.8.28;
 
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
-
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {Gauge} from "./Gauge.sol";
 
 contract GaugeFactory is UUPSUpgradeable, Ownable2StepUpgradeable {
     address public implementation;
@@ -24,9 +22,9 @@ contract GaugeFactory is UUPSUpgradeable, Ownable2StepUpgradeable {
         address _voter,
         address _initialOwner
     ) public initializer {
-        __Ownable_init(_initialOwner);
-        __Ownable2Step_init();
         __UUPSUpgradeable_init();
+        __Ownable2Step_init();
+        __Ownable_init(_initialOwner);
 
         implementation = address(new Gauge());
         kitten = _kitten;

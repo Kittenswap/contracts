@@ -1,6 +1,22 @@
-pragma solidity ^0.8.23;
+pragma solidity ^0.8.28;
 
 interface IGauge {
+    /* events */
+    event ClaimAndNotifyFees(
+        address indexed _from,
+        uint256 _claimed0,
+        uint256 _claimed1
+    );
+
+    /* errors */
+    error NotVoterOrAuthorized();
+    error NotOwnerOrVoter();
+    error ActionLocked();
+    error NotifyLessThanEqualToLeft();
+    error ZeroRewardRate();
+    error RewardRateExceedBalance();
+    error ZeroAmount();
+
     /* public functions */
     function deposit(uint256 _amount) external;
     function withdraw(uint256 _amount) external;

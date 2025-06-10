@@ -4,34 +4,44 @@ import "forge-std/Test.sol";
 import "forge-std/console.sol";
 import {Options} from "openzeppelin-foundry-upgrades/Options.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
-
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
-import {IWHYPE9} from "src/interfaces/IWHYPE9.sol";
+
+/* volatile contracts */
 import {PairFactory} from "src/factories/PairFactory.sol";
 import {Router} from "src/Router.sol";
+
+/* cl contracts */
 import {FactoryRegistry} from "src/clAMM/core/FactoryRegistry.sol";
-import {ICLFactory} from "src/clAMM/core/interfaces/ICLFactory.sol";
 import {ICustomFeeModule} from "src/clAMM/core/interfaces/fees/ICustomFeeModule.sol";
 import {ISwapRouter} from "src/clAMM/periphery/interfaces/ISwapRouter.sol";
 import {INonfungiblePositionManager} from "src/clAMM/periphery/interfaces/INonfungiblePositionManager.flatten.sol";
 import {IQuoterV2} from "src/clAMM/periphery/interfaces/IQuoterV2.sol";
+import {ICLFactory} from "src/clAMM/core/interfaces/ICLFactory.sol";
+import {ICLPool} from "src/clAMM/core/interfaces/ICLPool.sol";
+
+/* voter contracts */
 import {Kitten} from "src/Kitten.sol";
 import {VeArtProxy} from "src/VeArtProxy.sol";
 import {VotingEscrow} from "src/VotingEscrow.sol";
 import {Voter} from "src/Voter.sol";
-import {RewardsDistributor} from "src/RewardsDistributor.sol";
+import {RebaseReward} from "src/reward/RebaseReward.sol";
 import {Minter} from "src/Minter.sol";
-import {GaugeFactory} from "src/factories/GaugeFactory.sol";
-import {BribeFactory} from "src/factories/BribeFactory.sol";
+import {VotingReward} from "src/reward/VotingReward.sol";
+
+/* gauges and voting rewards */
+import {GaugeFactory} from "src/gauge/GaugeFactory.sol";
 import {CLGaugeFactory} from "src/clAMM/gauge/CLGaugeFactory.sol";
-import {ICLPool} from "src/clAMM/core/interfaces/ICLPool.sol";
-import {Gauge} from "src/Gauge.sol";
-import {InternalBribe} from "src/InternalBribe.sol";
+import {VotingRewardFactory} from "src/reward/VotingRewardFactory.sol";
+import {Gauge} from "src/gauge/Gauge.sol";
 import {CLGauge} from "src/clAMM/gauge/CLGauge.sol";
-import {ExternalBribe} from "src/ExternalBribe.sol";
 
+/* others */
+import {IWHYPE9} from "src/interfaces/IWHYPE9.sol";
 import {IERC20} from "src/interfaces/IERC20.sol";
+import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
+import {ProtocolTimeLibrary} from "src/clAMM/libraries/ProtocolTimeLibrary.sol";
 
+/* tests */
 import {Base} from "test/base/Base.t.sol";
 
 interface ICLFactoryExtended is ICLFactory {
@@ -619,42 +629,5 @@ contract TestVotingEscrow is Base {
         uint256 tokenId = type(uint256).max;
         vm.expectRevert();
         veKitten.ownerOf(tokenId);
-    }
-
-    function testInflatedVotingPowerBalanceOfNFTAt() public {
-        _setUp();
-        vm.warp(100 weeks);
-        vm.startPrank(deployer);
-
-        address user1 = userList[0];
-
-        kitten.approve(address(veKitten), type(uint256).max);
-        uint256 tokenId1 = veKitten.create_lock_for(
-            100_000_000 ether,
-            10 weeks,
-            user1
-        );
-
-        vm.warp(block.timestamp + 10 weeks);
-        uint256 tokenId2 = veKitten.create_lock_for(
-            100_000_000 ether,
-            10 weeks,
-            user1
-        );
-
-        uint256 votingPower1 = veKitten.balanceOfNFTAt(
-            tokenId1,
-            block.timestamp - 5 weeks
-        );
-        uint256 votingPower2 = veKitten.balanceOfNFTAt(
-            tokenId2,
-            block.timestamp - 5 weeks
-        );
-
-        //@audit token2 is just created but have much more voting power at the past
-        vm.assertLe(votingPower1, 100_000_000 ether);
-
-        vm.expectRevert();
-        vm.assertLe(votingPower2, 0);
     }
 }

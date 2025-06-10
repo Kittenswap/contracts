@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.28;
 
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
@@ -7,10 +7,9 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
-
+import {ProtocolTimeLibrary} from "../clAMM/libraries/ProtocolTimeLibrary.sol";
 import {IGauge} from "../interfaces/IGauge.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-
 import {IVoter} from "../interfaces/IVoter.sol";
 import {IVotingEscrow} from "../interfaces/IVotingEscrow.sol";
 import {IReward} from "../interfaces/IReward.sol";
@@ -32,21 +31,9 @@ contract Gauge is
     using SafeERC20 for IERC20;
 
     /* constants */
-    uint256 public constant DURATION = 1 weeks;
+    uint256 public constant DURATION = ProtocolTimeLibrary.WEEK;
     uint256 public constant PRECISION = 1 ether;
     bytes32 public constant AUTHORIZED_ROLE = keccak256("AUTHORIZED_ROLE");
-
-    /* events */
-    event ClaimAndNotifyFees(
-        address indexed _from,
-        uint256 _claimed0,
-        uint256 _claimed1
-    );
-
-    /* errors */
-    error NotVoterOrAuthorized();
-    error NotOwnerOrVoter();
-    error ActionLocked();
 
     IERC20 public lpToken; // staking token
     IERC20 public kitten; // rewards token
@@ -66,7 +53,6 @@ contract Gauge is
     mapping(address => uint256) public userRewardPerTokenPaid;
     // User address => rewards to be claimed
     mapping(address => uint256) public rewards;
-
     // Total staked
     uint256 public totalSupply;
     // User address => staked amount
@@ -76,7 +62,6 @@ contract Gauge is
     mapping(uint256 _blockNumber => mapping(address _user => bool)) userActionLocked; // 1 action per block, eg deposit or withdraw
 
     /* modifiers */
-
     modifier actionLock() {
         if (userActionLocked[block.number][msg.sender]) revert ActionLocked();
         userActionLocked[block.number][msg.sender] = true;
@@ -101,7 +86,6 @@ contract Gauge is
             rewards[_account] = earned(_account);
             userRewardPerTokenPaid[_account] = rewardPerTokenStored;
         }
-
         _;
     }
 
@@ -118,6 +102,8 @@ contract Gauge is
         __UUPSUpgradeable_init();
         __Ownable2Step_init();
         __Ownable_init(_initialOwner);
+        __AccessControl_init();
+        __ReentrancyGuard_init();
 
         lpToken = IERC20(_lpToken);
         kitten = IERC20(_kitten);
@@ -132,7 +118,7 @@ contract Gauge is
     function deposit(
         uint256 _amount
     ) external nonReentrant actionLock updateReward(msg.sender) {
-        require(_amount > 0, "amount = 0");
+        if (_amount == 0) revert ZeroAmount();
         lpToken.safeTransferFrom(msg.sender, address(this), _amount);
         balanceOf[msg.sender] += _amount;
         totalSupply += _amount;
@@ -141,16 +127,15 @@ contract Gauge is
     function withdraw(
         uint256 _amount
     ) external nonReentrant actionLock updateReward(msg.sender) {
-        require(_amount > 0, "amount = 0");
+        if (_amount == 0) revert ZeroAmount();
         balanceOf[msg.sender] -= _amount;
         totalSupply -= _amount;
         lpToken.safeTransfer(msg.sender, _amount);
     }
 
     function getReward(address _account) external updateReward(_account) {
-        if (msg.sender != _account && msg.sender != address(voter)) {
+        if (msg.sender != _account && msg.sender != address(voter))
             revert NotOwnerOrVoter();
-        }
 
         uint256 reward = rewards[_account];
         if (reward > 0) {
@@ -205,19 +190,15 @@ contract Gauge is
         } else {
             uint256 remainingRewards = (finishAt - block.timestamp) *
                 rewardRate;
-            require(
-                _amount * PRECISION > remainingRewards,
-                "_amount <= remainingRewards"
-            );
+            if (_amount * PRECISION <= remainingRewards)
+                revert NotifyLessThanEqualToLeft();
             rewardRate = ((_amount * PRECISION) + remainingRewards) / DURATION;
         }
-
-        require(rewardRate > 0, "reward rate = 0");
-        require(
-            (rewardRate * DURATION) / PRECISION <=
-                kitten.balanceOf(address(this)),
-            "reward amount > balance"
-        );
+        if (rewardRate == 0) revert ZeroRewardRate();
+        if (
+            (rewardRate * DURATION) / PRECISION >
+            kitten.balanceOf(address(this))
+        ) revert RewardRateExceedBalance();
 
         finishAt = block.timestamp + DURATION;
         updatedAt = block.timestamp;

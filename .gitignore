@@ -14,4 +14,6 @@ typechain-types/
 /broadcast
 .env
 .DS_Store
-misc/nft_foundry_list_2d.json
+misc
+
+/snapshots

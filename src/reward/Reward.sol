@@ -85,6 +85,17 @@ abstract contract Reward is
     }
 
     /* public functions */
+    function getRewardForPeriod(
+        uint256 _period,
+        uint256 _tokenId,
+        address _token
+    ) external nonReentrant {
+        if (!veKitten.isApprovedOrOwner(msg.sender, _tokenId))
+            revert NotApprovedOrOwner();
+
+        _getReward(_period, _tokenId, _token, msg.sender);
+    }
+
     function getRewardForTokenId(uint256 _tokenId) external nonReentrant {
         if (!veKitten.isApprovedOrOwner(msg.sender, _tokenId))
             revert NotApprovedOrOwner();
@@ -96,17 +107,6 @@ abstract contract Reward is
         if (msg.sender != address(voter)) revert NotVoter();
 
         _getRewardForTokenId(_tokenId, veKitten.ownerOf(_tokenId));
-    }
-
-    function getRewardForPeriod(
-        uint256 _period,
-        uint256 _tokenId,
-        address _token
-    ) external nonReentrant {
-        if (!veKitten.isApprovedOrOwner(msg.sender, _tokenId))
-            revert NotApprovedOrOwner();
-
-        _getReward(_period, _tokenId, _token, msg.sender);
     }
 
     /* view functions */

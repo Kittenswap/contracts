@@ -1,4 +1,4 @@
-pragma solidity ^0.8.23;
+pragma solidity ^0.8.28;
 
 interface IReward {
     event Deposit(uint256 _period, uint256 _amount, uint256 _tokenId);

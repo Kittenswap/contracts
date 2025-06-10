@@ -4,47 +4,56 @@ import "forge-std/Test.sol";
 import "forge-std/console.sol";
 import {Options} from "openzeppelin-foundry-upgrades/Options.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
-
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
-import {IWHYPE9} from "src/interfaces/IWHYPE9.sol";
+
+/* volatile contracts */
 import {PairFactory} from "src/factories/PairFactory.sol";
 import {Router} from "src/Router.sol";
+
+/* cl contracts */
 import {FactoryRegistry} from "src/clAMM/core/FactoryRegistry.sol";
-import {ICLFactory} from "src/clAMM/core/interfaces/ICLFactory.sol";
 import {ICustomFeeModule} from "src/clAMM/core/interfaces/fees/ICustomFeeModule.sol";
 import {ISwapRouter} from "src/clAMM/periphery/interfaces/ISwapRouter.sol";
 import {INonfungiblePositionManager} from "src/clAMM/periphery/interfaces/INonfungiblePositionManager.flatten.sol";
 import {IQuoterV2} from "src/clAMM/periphery/interfaces/IQuoterV2.sol";
+import {ICLFactory} from "src/clAMM/core/interfaces/ICLFactory.sol";
+import {ICLPool} from "src/clAMM/core/interfaces/ICLPool.sol";
+
+/* voter contracts */
 import {Kitten} from "src/Kitten.sol";
 import {VeArtProxy} from "src/VeArtProxy.sol";
 import {VotingEscrow} from "src/VotingEscrow.sol";
 import {Voter} from "src/Voter.sol";
-import {RewardsDistributor} from "src/RewardsDistributor.sol";
+import {RebaseReward} from "src/reward/RebaseReward.sol";
 import {Minter} from "src/Minter.sol";
-import {GaugeFactory} from "src/factories/GaugeFactory.sol";
-import {BribeFactory} from "src/factories/BribeFactory.sol";
+import {VotingReward} from "src/reward/VotingReward.sol";
+
+/* gauges and voting rewards */
+import {GaugeFactory} from "src/gauge/GaugeFactory.sol";
 import {CLGaugeFactory} from "src/clAMM/gauge/CLGaugeFactory.sol";
-import {ICLPool} from "src/clAMM/core/interfaces/ICLPool.sol";
-import {Gauge} from "src/Gauge.sol";
-import {InternalBribe} from "src/InternalBribe.sol";
+import {VotingRewardFactory} from "src/reward/VotingRewardFactory.sol";
+import {Gauge} from "src/gauge/Gauge.sol";
 import {CLGauge} from "src/clAMM/gauge/CLGauge.sol";
-import {ExternalBribe} from "src/ExternalBribe.sol";
 
+/* others */
+import {IWHYPE9} from "src/interfaces/IWHYPE9.sol";
 import {IERC20} from "src/interfaces/IERC20.sol";
-
-import {TestCLFactory} from "test/TestCLFactory.t.sol";
-import {TestBribeFactory} from "test/TestBribeFactory.t.sol";
-import {TestVoter} from "test/TestVoter.t.sol";
+import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 import {ProtocolTimeLibrary} from "src/clAMM/libraries/ProtocolTimeLibrary.sol";
+
+/* tests */
+import {TestVoter} from "test/TestVoter.t.sol";
 
 interface ICLFactoryExtended is ICLFactory {
     function setVoter(address _voter) external;
 }
 
 contract TestCLGauge is TestVoter {
+    using EnumerableMap for EnumerableMap.AddressToAddressMap;
+
     bool CLGauge__setUp;
     function testCLGauge__setUp() public {
-        testVote();
+        test_Vote();
 
         if (CLGauge__setUp) return;
         CLGauge__setUp = true;
@@ -63,12 +72,7 @@ contract TestCLGauge is TestVoter {
 
         for (uint i; i < poolList.length; i++) {
             vm.expectRevert();
-            clGaugeFactory.createGauge(
-                poolList[i],
-                vm.randomAddress(),
-                vm.randomAddress(),
-                true
-            );
+            clGaugeFactory.createGauge(poolList[i], vm.randomAddress());
         }
 
         vm.stopPrank();
@@ -84,7 +88,7 @@ contract TestCLGauge is TestVoter {
             for (uint i; i < poolList.length; i++) {
                 ICLPool pool = ICLPool(poolList[i]);
 
-                CLGauge clGauge = CLGauge(gauge[address(pool)]);
+                CLGauge clGauge = CLGauge(gauge.get(address(pool)));
 
                 address token0 = ICLPool(pool).token0();
                 address token1 = ICLPool(pool).token1();
@@ -118,7 +122,7 @@ contract TestCLGauge is TestVoter {
 
                 vm.startPrank(user1);
 
-                int24 tickSpacing = 200;
+                int24 tickSpacing = ICLPool(pool).tickSpacing();
 
                 IERC20(token0).approve(
                     address(nfp),
@@ -153,7 +157,7 @@ contract TestCLGauge is TestVoter {
                 );
 
                 nfp.setApprovalForAll(address(clGauge), true);
-                clGauge.deposit(nfpTokenId, 0);
+                clGauge.deposit(nfpTokenId);
 
                 vm.assertEq(nfp.ownerOf(nfpTokenId), address(clGauge));
 
@@ -181,9 +185,9 @@ contract TestCLGauge is TestVoter {
 
         address user1 = userList[0];
 
-        CLGauge clGauge = CLGauge(gauge[address(poolList[0])]);
+        CLGauge clGauge = CLGauge(gauge.get(address(poolList[0])));
 
-        vm.prank(voter.emergencyCouncil());
+        vm.prank(deployer);
         voter.killGauge(address(clGauge));
 
         address token0 = ICLPool(poolList[0]).token0();
@@ -245,19 +249,19 @@ contract TestCLGauge is TestVoter {
         nfp.setApprovalForAll(address(clGauge), true);
 
         vm.expectRevert();
-        clGauge.deposit(nfpTokenId, 0);
+        clGauge.deposit(nfpTokenId);
 
         vm.stopPrank();
     }
 
-    /* Get reward tests */
+    // /* Get reward tests */
     // function testFuzz_GetRewardForNfpTokenId(uint256 emissionAmount) public {
     function testGetRewardForNfpTokenId() public {
         testDeposit();
 
         address user1 = userList[0];
 
-        CLGauge clGauge = CLGauge(gauge[address(poolList[0])]);
+        CLGauge clGauge = CLGauge(gauge.get(address(poolList[0])));
         uint256 nfpTokenId = clGauge.getUserStakedNFPs(user1)[0];
 
         // vm.assume(emissionAmount <= kitten.balanceOf(deployer));
@@ -271,7 +275,7 @@ contract TestCLGauge is TestVoter {
         vm.startPrank(address(voter));
 
         kitten.approve(address(clGauge), emissionAmount);
-        clGauge.notifyRewardAmount(clGauge.kitten(), emissionAmount);
+        clGauge.notifyRewardAmount(emissionAmount);
 
         vm.stopPrank();
 
@@ -300,7 +304,7 @@ contract TestCLGauge is TestVoter {
 
         address user1 = userList[0];
 
-        CLGauge clGauge = CLGauge(gauge[address(poolList[0])]);
+        CLGauge clGauge = CLGauge(gauge.get(address(poolList[0])));
         uint256 nfpTokenId = clGauge.getUserStakedNFPs(user1)[0];
 
         uint256 emissionAmount = kitten.balanceOf(deployer) / 10;
@@ -310,7 +314,7 @@ contract TestCLGauge is TestVoter {
 
         vm.startPrank(address(voter));
         kitten.approve(address(clGauge), emissionAmount);
-        clGauge.notifyRewardAmount(clGauge.kitten(), emissionAmount);
+        clGauge.notifyRewardAmount(emissionAmount);
 
         vm.stopPrank();
 
@@ -318,10 +322,8 @@ contract TestCLGauge is TestVoter {
 
         vm.startPrank(user1);
 
-        address[] memory emptyList;
-
         uint256 kittenBalBefore = kitten.balanceOf(user1);
-        clGauge.getReward(user1, emptyList);
+        clGauge.getReward(user1);
         uint256 kittenBalAfter = kitten.balanceOf(user1);
 
         (, , , , , , , uint128 _liquidity, , , , ) = nfp.positions(nfpTokenId);
@@ -341,7 +343,7 @@ contract TestCLGauge is TestVoter {
 
         address user1 = userList[0];
 
-        CLGauge clGauge = CLGauge(gauge[address(poolList[0])]);
+        CLGauge clGauge = CLGauge(gauge.get(address(poolList[0])));
         uint256 nfpTokenId = clGauge.getUserStakedNFPs(user1)[0];
 
         uint256 emissionAmount = kitten.balanceOf(deployer) / 10;
@@ -351,7 +353,7 @@ contract TestCLGauge is TestVoter {
 
         vm.startPrank(address(voter));
         kitten.approve(address(clGauge), emissionAmount);
-        clGauge.notifyRewardAmount(clGauge.kitten(), emissionAmount);
+        clGauge.notifyRewardAmount(emissionAmount);
 
         vm.stopPrank();
 
@@ -359,10 +361,8 @@ contract TestCLGauge is TestVoter {
 
         vm.startPrank(address(voter));
 
-        address[] memory emptyList;
-
         uint256 kittenBalBefore = kitten.balanceOf(user1);
-        clGauge.getReward(user1, emptyList);
+        clGauge.getReward(user1);
         uint256 kittenBalAfter = kitten.balanceOf(user1);
 
         (, , , , , , , uint128 _liquidity, , , , ) = nfp.positions(nfpTokenId);
@@ -380,7 +380,7 @@ contract TestCLGauge is TestVoter {
     function testRevertNotOwnerGetReward() public {
         testDeposit();
 
-        CLGauge clGauge = CLGauge(gauge[address(poolList[0])]);
+        CLGauge clGauge = CLGauge(gauge.get(address(poolList[0])));
         uint256 nfpTokenId = clGauge.getUserStakedNFPs(userList[0])[0];
 
         uint256 emissionAmount = kitten.balanceOf(deployer) / 10;
@@ -391,7 +391,7 @@ contract TestCLGauge is TestVoter {
         vm.startPrank(address(voter));
 
         kitten.approve(address(clGauge), emissionAmount);
-        clGauge.notifyRewardAmount(clGauge.kitten(), emissionAmount);
+        clGauge.notifyRewardAmount(emissionAmount);
 
         vm.stopPrank();
 
@@ -409,7 +409,7 @@ contract TestCLGauge is TestVoter {
     function testRevertNotOwnerGetRewardForAccount() public {
         testDeposit();
 
-        CLGauge clGauge = CLGauge(gauge[address(poolList[0])]);
+        CLGauge clGauge = CLGauge(gauge.get(address(poolList[0])));
         uint256 nfpTokenId = clGauge.getUserStakedNFPs(userList[0])[0];
 
         uint256 emissionAmount = kitten.balanceOf(deployer) / 10;
@@ -420,7 +420,7 @@ contract TestCLGauge is TestVoter {
         vm.startPrank(address(voter));
 
         kitten.approve(address(clGauge), emissionAmount);
-        clGauge.notifyRewardAmount(clGauge.kitten(), emissionAmount);
+        clGauge.notifyRewardAmount(emissionAmount);
 
         vm.stopPrank();
 
@@ -440,7 +440,7 @@ contract TestCLGauge is TestVoter {
     function testRevertNotOwnerOrVoterGetRewardForAccount() public {
         testDeposit();
 
-        CLGauge clGauge = CLGauge(gauge[address(poolList[0])]);
+        CLGauge clGauge = CLGauge(gauge.get(address(poolList[0])));
         uint256 nfpTokenId = clGauge.getUserStakedNFPs(userList[0])[0];
 
         uint256 emissionAmount = kitten.balanceOf(deployer) / 10;
@@ -451,7 +451,7 @@ contract TestCLGauge is TestVoter {
         vm.startPrank(address(voter));
 
         kitten.approve(address(clGauge), emissionAmount);
-        clGauge.notifyRewardAmount(clGauge.kitten(), emissionAmount);
+        clGauge.notifyRewardAmount(emissionAmount);
 
         vm.stopPrank();
 
@@ -471,7 +471,7 @@ contract TestCLGauge is TestVoter {
     function testClaimFees() public {
         testDeposit();
 
-        CLGauge clGauge = CLGauge(gauge[address(poolList[0])]);
+        CLGauge clGauge = CLGauge(gauge.get(address(poolList[0])));
 
         vm.startPrank(deployer);
         clGauge.claimFees();
@@ -487,7 +487,7 @@ contract TestCLGauge is TestVoter {
         // claim to reset the clPool.gaugeFees() to (1,1)
         testClaimFees();
 
-        CLGauge clGauge = CLGauge(gauge[address(poolList[0])]);
+        CLGauge clGauge = CLGauge(gauge.get(address(poolList[0])));
         address user1 = userList[0];
 
         vm.startPrank(user1);
@@ -595,10 +595,6 @@ contract TestCLGauge is TestVoter {
 
         console.log("fees0 before", clGauge.fees0());
         console.log("fees1 before", clGauge.fees1());
-        console.log(
-            "left0",
-            InternalBribe(clGauge.internal_bribe()).left(token0)
-        );
 
         clGauge.claimFees();
 
@@ -645,7 +641,7 @@ contract TestCLGauge is TestVoter {
     function testTransferStuckERC20() public {
         testDeposit();
 
-        CLGauge clGauge = CLGauge(gauge[address(poolList[0])]);
+        CLGauge clGauge = CLGauge(gauge.get(address(poolList[0])));
 
         uint256 emissionAmount = kitten.balanceOf(deployer) / 10;
 
@@ -655,7 +651,7 @@ contract TestCLGauge is TestVoter {
         vm.startPrank(address(voter));
 
         kitten.approve(address(clGauge), emissionAmount);
-        clGauge.notifyRewardAmount(clGauge.kitten(), emissionAmount);
+        clGauge.notifyRewardAmount(emissionAmount);
 
         vm.stopPrank();
 
@@ -688,7 +684,7 @@ contract TestCLGauge is TestVoter {
     function testRevertNotOwnerTransferStuckERC20() public {
         testDeposit();
 
-        CLGauge clGauge = CLGauge(gauge[address(poolList[0])]);
+        CLGauge clGauge = CLGauge(gauge.get(address(poolList[0])));
 
         address randomUser = vm.randomAddress();
         vm.startPrank(randomUser);
@@ -722,7 +718,7 @@ contract TestCLGauge is TestVoter {
                     IERC20(ICLPool(pool).token1()).symbol()
                 );
 
-                CLGauge clGauge = CLGauge(gauge[address(pool)]);
+                CLGauge clGauge = CLGauge(gauge.get(address(pool)));
 
                 uint256 nfpTokenId = clGauge.getUserStakedNFPs(user1)[0];
 
@@ -744,9 +740,6 @@ contract TestCLGauge is TestVoter {
 
         // only voter can notify rewards once per epoch
         vm.expectRevert();
-        CLGauge(gauge[address(poolList[0])]).notifyRewardAmount(
-            address(kitten),
-            1 ether
-        );
+        CLGauge(gauge.get(address(poolList[0]))).notifyRewardAmount(1 ether);
     }
 }

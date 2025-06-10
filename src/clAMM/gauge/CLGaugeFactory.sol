@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.23;
-
-import {ICLGaugeFactory} from "./interfaces/ICLGaugeFactory.sol";
-import {CLGauge} from "./CLGauge.sol";
-import {ICLPool} from "../core/interfaces/ICLPool.sol";
+pragma solidity ^0.8.28;
 
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
-
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {ICLGaugeFactory} from "./interfaces/ICLGaugeFactory.sol";
+import {CLGauge} from "./CLGauge.sol";
+import {ICLPool} from "../core/interfaces/ICLPool.sol";
 
 contract CLGaugeFactory is
     ICLGaugeFactory,
@@ -56,15 +54,7 @@ contract CLGaugeFactory is
                     implementation,
                     abi.encodeCall(
                         CLGauge.initialize,
-                        (
-                            _pool,
-                            _votingReward,
-                            kitten,
-                            veKitten,
-                            voter,
-                            nfp,
-                            owner()
-                        )
+                        (_pool, _votingReward, kitten, voter, nfp, owner())
                     )
                 )
             )

@@ -42,62 +42,43 @@ import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap
 import {ProtocolTimeLibrary} from "src/clAMM/libraries/ProtocolTimeLibrary.sol";
 
 /* tests */
-import {Base} from "test/base/Base.t.sol";
+import {TestPairFactory} from "test/TestPairFactory.t.sol";
 
-interface ICLFactoryExtended is ICLFactory {
-    function setVoter(address _voter) external;
-}
+contract TestGaugeFactory is TestPairFactory {
+    bool GaugeFactory__setUp;
+    function testGaugeFactory__setUp() public {
+        testPairFactory__setUp();
 
-contract TestPairFactory is Base {
-    address[] pairListVolatile;
-    address[] pairListStable;
-
-    bool PairFactory__setUp;
-    function testPairFactory__setUp() public {
-        _setUp();
-
-        if (PairFactory__setUp) return;
-        PairFactory__setUp = true;
-
-        vm.startPrank(deployer);
-
-        for (uint i; i < tokenList.length; i++) {
-            for (uint j; j < i; j++) {
-                address pairVolatile = pairFactory.getPair(
-                    tokenList[i],
-                    tokenList[j],
-                    false
-                );
-                address pairStable = pairFactory.getPair(
-                    tokenList[i],
-                    tokenList[j],
-                    true
-                );
-
-                if (pairVolatile != address(0)) {
-                    pairListVolatile.push(pairVolatile);
-                }
-                if (pairStable != address(0)) {
-                    pairListStable.push(pairStable);
-                }
-            }
-        }
+        if (GaugeFactory__setUp) return;
+        GaugeFactory__setUp = true;
 
         vm.stopPrank();
+    }
 
-        console.log("tokenList");
-        for (uint i; i < tokenList.length; i++) {
-            console.log("i", i, tokenList[i]);
-        }
+    function test_CreateGauge() public {
+        testGaugeFactory__setUp();
 
-        console.log("pairListVolatile");
-        for (uint i; i < pairListVolatile.length; i++) {
-            console.log("i", i, pairListVolatile[i]);
-        }
+        address _lpToken = vm.randomAddress();
 
-        console.log("pairListStable");
-        for (uint i; i < pairListStable.length; i++) {
-            console.log("i", i, pairListStable[i]);
-        }
+        vm.startPrank(address(voter));
+        Gauge gauge = Gauge(gaugeFactory.createGauge(_lpToken));
+
+        vm.assertEq(address(gauge.lpToken()), _lpToken);
+        vm.assertEq(address(gauge.kitten()), address(kitten));
+        vm.assertEq(address(gauge.voter()), address(voter));
+        vm.assertEq(address(gauge.owner()), deployer);
+        vm.stopPrank();
+    }
+
+    function test_RevertIf_NotVoter_CreateGauge() public {
+        testGaugeFactory__setUp();
+
+        address _lpToken = vm.randomAddress();
+        address randomUser = vm.randomAddress();
+
+        vm.startPrank(randomUser);
+        vm.expectRevert();
+        gaugeFactory.createGauge(_lpToken);
+        vm.stopPrank();
     }
 }
