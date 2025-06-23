@@ -206,6 +206,14 @@ contract Gauge is
         updatedAt = block.timestamp;
     }
 
+    function claimFees()
+        external
+        onlyVoterOrAuthorized
+        returns (uint256 claimed0, uint256 claimed1)
+    {
+        return _claimFees();
+    }
+
     /* internal functions */
     function _claimFees()
         internal

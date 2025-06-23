@@ -468,12 +468,13 @@ contract TestCLGauge is TestVoter {
         vm.stopPrank();
     }
 
-    function testClaimFees() public {
+    /* claimFees function */
+    function test_ClaimFees() public {
         testDeposit();
 
         CLGauge clGauge = CLGauge(gauge.get(address(poolList[0])));
 
-        vm.startPrank(deployer);
+        vm.startPrank(address(voter));
         clGauge.claimFees();
 
         console.log("fees0", clGauge.fees0());
@@ -482,10 +483,23 @@ contract TestCLGauge is TestVoter {
         vm.stopPrank();
     }
 
+    function test_RevertIf_NotVoter_ClaimFees() public {
+        testDeposit();
+
+        CLGauge clGauge = CLGauge(gauge.get(address(poolList[0])));
+
+        address randomUser = vm.randomAddress();
+        vm.startPrank(randomUser);
+        vm.expectRevert();
+        clGauge.claimFees();
+
+        vm.stopPrank();
+    }
+
     /* Issue due to the flawed clPool.collectFees() logic */
     function testNoPhantomClaimFees() public {
         // claim to reset the clPool.gaugeFees() to (1,1)
-        testClaimFees();
+        test_ClaimFees();
 
         CLGauge clGauge = CLGauge(gauge.get(address(poolList[0])));
         address user1 = userList[0];

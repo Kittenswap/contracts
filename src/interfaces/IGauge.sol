@@ -27,4 +27,5 @@ interface IGauge {
 
     /* authorized functions */
     function notifyRewardAmount(uint256 amount) external;
+    function claimFees() external returns (uint256 claimed0, uint256 claimed1);
 }

@@ -415,6 +415,7 @@ contract Voter is
                     claimable[_gauge] += _share;
                 } else {
                     IERC20(kitten).transfer(minter, _share);
+                    IGauge(_gauge).claimFees(); // distribute accrued fees for killed gauges
                 }
             }
         } else {

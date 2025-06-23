@@ -113,6 +113,8 @@ contract CLGauge is
         nonReentrant
         returns (uint256 claimed0, uint256 claimed1)
     {
+        require(msg.sender == voter, "Not Voter");
+
         return _claimFees();
     }
 
