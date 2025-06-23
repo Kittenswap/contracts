@@ -25,6 +25,7 @@ interface IReward {
     error NotVoter();
     error NotWhitelistedRewardToken();
     error NotApprovedOrOwner();
+    error FuturePeriodNotClaimable();
 
     /* only voter functions */
     function _deposit(uint256 _amount, uint256 _tokenId) external;

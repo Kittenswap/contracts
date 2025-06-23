@@ -92,6 +92,7 @@ abstract contract Reward is
     ) external nonReentrant {
         if (!veKitten.isApprovedOrOwner(msg.sender, _tokenId))
             revert NotApprovedOrOwner();
+        if (_period > getCurrentPeriod()) revert FuturePeriodNotClaimable();
 
         _getReward(_period, _tokenId, _token, msg.sender);
     }

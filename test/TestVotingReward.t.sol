@@ -130,6 +130,43 @@ contract TestVotingReward is TestVoter {
         vm.stopPrank();
     }
 
+    function test_RevertIf_FuturePeriod_GetRewardForPeriod() public {
+        test_CreateGauge();
+
+        CLGauge _gauge = CLGauge(gauge.get(poolList[0]));
+        VotingReward _votingReward = VotingReward(
+            address(_gauge.votingReward())
+        );
+
+        // vote
+        vm.startPrank(address(voter));
+        address user1 = userList[0];
+        uint256 tokenId = veKitten.tokenOfOwnerByIndex(user1, 0);
+        _votingReward._deposit(1 ether, tokenId);
+        vm.stopPrank();
+
+        // notify reward after epoch ends/start of next epoch
+        vm.warp(ProtocolTimeLibrary.epochNext(block.timestamp));
+        uint256 notifyAmount = 1 ether;
+        vm.prank(address(minter));
+        kitten.mint(address(_gauge), notifyAmount);
+        vm.stopPrank();
+
+        vm.startPrank(address(_gauge));
+        kitten.approve(address(_votingReward), notifyAmount);
+        _votingReward.incentivize(address(kitten), notifyAmount);
+
+        uint256 futurePeriod = _votingReward.getCurrentPeriod() + 1;
+        vm.startPrank(user1);
+        vm.expectRevert();
+        _votingReward.getRewardForPeriod(
+            futurePeriod,
+            tokenId,
+            address(kitten)
+        );
+        vm.stopPrank();
+    }
+
     function test_GetRewardForTokenId() public {
         test_CreateGauge();
 
