@@ -97,6 +97,7 @@ contract Gauge is
         address _lpToken,
         address _kitten,
         address _voter,
+        address _votingReward,
         address _initialOwner
     ) public initializer {
         __UUPSUpgradeable_init();
@@ -109,6 +110,7 @@ contract Gauge is
         kitten = IERC20(_kitten);
 
         voter = IVoter(_voter);
+        votingReward = IReward(_votingReward);
 
         _grantRole(DEFAULT_ADMIN_ROLE, _initialOwner);
         _grantRole(AUTHORIZED_ROLE, _initialOwner);

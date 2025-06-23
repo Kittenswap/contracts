@@ -466,7 +466,10 @@ contract Voter is
                 _votingReward
             );
         } else {
-            _gauge = IGaugeFactory(gaugefactory).createGauge(_pool);
+            _gauge = IGaugeFactory(gaugefactory).createGauge(
+                _pool,
+                _votingReward
+            );
         }
         IVotingReward(_votingReward).grantNotifyRole(_gauge);
 

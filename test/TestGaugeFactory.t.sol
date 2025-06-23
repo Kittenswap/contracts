@@ -59,14 +59,16 @@ contract TestGaugeFactory is TestPairFactory {
         testGaugeFactory__setUp();
 
         address _lpToken = vm.randomAddress();
+        address votingReward = vm.randomAddress();
 
         vm.startPrank(address(voter));
-        Gauge gauge = Gauge(gaugeFactory.createGauge(_lpToken));
+        Gauge gauge = Gauge(gaugeFactory.createGauge(_lpToken, votingReward));
 
         vm.assertEq(address(gauge.lpToken()), _lpToken);
         vm.assertEq(address(gauge.kitten()), address(kitten));
         vm.assertEq(address(gauge.voter()), address(voter));
         vm.assertEq(address(gauge.owner()), deployer);
+        vm.assertEq(address(gauge.votingReward()), votingReward);
         vm.stopPrank();
     }
 
@@ -76,9 +78,11 @@ contract TestGaugeFactory is TestPairFactory {
         address _lpToken = vm.randomAddress();
         address randomUser = vm.randomAddress();
 
+        address votingReward = vm.randomAddress();
+
         vm.startPrank(randomUser);
         vm.expectRevert();
-        gaugeFactory.createGauge(_lpToken);
+        gaugeFactory.createGauge(_lpToken, votingReward);
         vm.stopPrank();
     }
 }

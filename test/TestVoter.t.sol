@@ -1021,6 +1021,10 @@ contract TestVoter is TestPairFactory, TestCLFactory, TestVotingEscrow {
             vm.assertTrue(_gaugeFetched == _gauge);
             vm.assertTrue(voter.isGauge(_gauge));
             vm.assertTrue(voter.isAlive(_gauge));
+            vm.assertEq(
+                voter.votingReward(_gauge),
+                address(Gauge(_gauge).votingReward())
+            );
 
             gauge.set(pairListVolatile[i], _gauge);
             console.log("gauge", pairListVolatile[i], _gauge);

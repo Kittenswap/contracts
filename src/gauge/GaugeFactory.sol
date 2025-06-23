@@ -31,7 +31,10 @@ contract GaugeFactory is UUPSUpgradeable, Ownable2StepUpgradeable {
         voter = _voter;
     }
 
-    function createGauge(address _lpToken) external returns (address) {
+    function createGauge(
+        address _lpToken,
+        address _votingReward
+    ) external returns (address) {
         if (msg.sender != voter) revert NotVoter();
 
         Gauge newGauge = Gauge(
@@ -40,7 +43,7 @@ contract GaugeFactory is UUPSUpgradeable, Ownable2StepUpgradeable {
                     implementation,
                     abi.encodeCall(
                         Gauge.initialize,
-                        (_lpToken, kitten, voter, owner())
+                        (_lpToken, kitten, voter, _votingReward, owner())
                     )
                 )
             )
