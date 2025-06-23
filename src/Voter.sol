@@ -315,6 +315,8 @@ contract Voter is
     }
 
     function reviveGauge(address _gauge) external onlyRole(AUTHORIZED_ROLE) {
+        _updateFor(_gauge);
+
         if (isAlive[_gauge]) revert GaugeAlive();
         isAlive[_gauge] = true;
         supplyIndex[_gauge] = index;
