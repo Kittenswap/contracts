@@ -102,6 +102,8 @@ contract Minter is IMinter, UUPSUpgradeable, Ownable2StepUpgradeable {
                 _tailEmissions
             );
 
+            lastMintedPeriod = currentPeriod;
+
             return true;
         }
         return false;

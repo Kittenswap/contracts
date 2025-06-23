@@ -1227,4 +1227,24 @@ contract TestVoter is TestPairFactory, TestCLFactory, TestVotingEscrow {
         vm.expectRevert();
         voter.reviveGauge(gauge.get(poolList[0]));
     }
+
+    function test_NotUnlimitedMinting_Minter_UpdatePeriod() public {
+        test_Vote();
+        vm.warp(block.timestamp + 1 weeks);
+
+        // should correctly minter for next epoch
+        uint256 totalSupplyBefore = kitten.totalSupply();
+        minter.updatePeriod();
+        uint256 totalSupplyAfter = kitten.totalSupply();
+        vm.assertGt(totalSupplyAfter, totalSupplyBefore);
+        totalSupplyBefore = totalSupplyAfter;
+
+        // should not mint for current epoch
+        for (uint256 i; i < 10; i++) {
+            minter.updatePeriod();
+            uint256 totalSupplyAfter = kitten.totalSupply();
+            vm.assertEq(totalSupplyAfter, totalSupplyBefore);
+            totalSupplyBefore = totalSupplyAfter;
+        }
+    }
 }
