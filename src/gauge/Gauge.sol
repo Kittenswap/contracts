@@ -120,6 +120,11 @@ contract Gauge is
     function deposit(
         uint256 _amount
     ) external nonReentrant actionLock updateReward(msg.sender) {
+        if (
+            IVoter(voter).isGauge(address(this)) == false ||
+            IVoter(voter).isAlive(address(this)) == false
+        ) revert NotGaugeOrNotAlive();
+
         if (_amount == 0) revert ZeroAmount();
         lpToken.safeTransferFrom(msg.sender, address(this), _amount);
         balanceOf[msg.sender] += _amount;

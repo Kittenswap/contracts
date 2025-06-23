@@ -16,6 +16,7 @@ interface IGauge {
     error ZeroRewardRate();
     error RewardRateExceedBalance();
     error ZeroAmount();
+    error NotGaugeOrNotAlive();
 
     /* public functions */
     function deposit(uint256 _amount) external;

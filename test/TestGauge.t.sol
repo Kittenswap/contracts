@@ -254,4 +254,43 @@ contract TestGauge is TestVoter {
         _gauge.getReward(user1);
         vm.stopPrank();
     }
+
+    function test_Deposit() public {
+        test_CreateGauge();
+
+        address pool = pairListVolatile[0];
+        Gauge _gauge = Gauge(gauge.get(pool));
+
+        address user1 = userList[0];
+
+        deal(pool, user1, 1 ether);
+        vm.startPrank(user1);
+
+        IERC20(pool).approve(address(_gauge), type(uint256).max);
+        _gauge.deposit(IERC20(pool).balanceOf(user1));
+
+        vm.stopPrank();
+    }
+
+    function test_RevertIf_NotGaugeOrNotAlive_Deposit() public {
+        test_CreateGauge();
+
+        address pool = pairListVolatile[0];
+        Gauge _gauge = Gauge(gauge.get(pool));
+
+        address user1 = userList[0];
+
+        vm.prank(deployer);
+        voter.killGauge(address(_gauge));
+
+        deal(pool, user1, 1 ether);
+        vm.startPrank(user1);
+
+        IERC20(pool).approve(address(_gauge), type(uint256).max);
+        uint256 balance = IERC20(pool).balanceOf(user1);
+        vm.expectRevert();
+        _gauge.deposit(balance);
+
+        vm.stopPrank();
+    }
 }
