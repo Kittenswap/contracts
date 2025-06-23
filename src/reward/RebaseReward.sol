@@ -43,6 +43,12 @@ contract RebaseReward is IRebaseReward, Reward {
         Reward.notifyRewardAmount(_token, _amount);
     }
 
+    function incentivize(address _token, uint256 _amount) public override {
+        if (_token != address(kitten)) revert NotKitten();
+
+        Reward.incentivize(_token, _amount);
+    }
+
     function _getReward(
         uint256 _period,
         uint256 _tokenId,

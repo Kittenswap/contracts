@@ -161,4 +161,32 @@ contract TestRebaseReward is TestVoter {
             kittenAmount + kittenAmount2
         );
     }
+
+    function test_RevertIf_RewardTokenNotKitten_Incentivize() public {
+        test_CreateGauge();
+        CLGauge _gauge = CLGauge(gauge.get(poolList[0]));
+        RebaseReward _rebaseReward = RebaseReward(voter.rebaseReward());
+        address user1 = userList[0];
+        address user2 = userList[1];
+        uint256 kittenAmount = 1 ether;
+
+        vm.startPrank(address(voter));
+        // user1 votes
+        uint256 tokenId1 = veKitten.tokenOfOwnerByIndex(user1, 0);
+        _rebaseReward._deposit(1 ether, tokenId1);
+
+        // user2 votes
+        uint256 tokenId2 = veKitten.tokenOfOwnerByIndex(user2, 0);
+        _rebaseReward._deposit(1 ether, tokenId2);
+        vm.stopPrank();
+
+        // user1 (or anyone else) sends 1e18 token0 as reward to RebaseReward
+        address notKittenToken = address(_gauge.token0());
+        deal(notKittenToken, user1, 1 ether);
+        vm.startPrank(address(user1));
+        IERC20(notKittenToken).approve(address(_rebaseReward), 1 ether);
+        vm.expectRevert();
+        _rebaseReward.incentivize(notKittenToken, 1 ether);
+        vm.stopPrank();
+    }
 }

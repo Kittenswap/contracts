@@ -89,7 +89,7 @@ abstract contract Reward is
         uint256 _period,
         uint256 _tokenId,
         address _token
-    ) external nonReentrant {
+    ) external virtual nonReentrant {
         if (!veKitten.isApprovedOrOwner(msg.sender, _tokenId))
             revert NotApprovedOrOwner();
         if (_period > getCurrentPeriod()) revert FuturePeriodNotClaimable();
@@ -97,14 +97,16 @@ abstract contract Reward is
         _getReward(_period, _tokenId, _token, msg.sender);
     }
 
-    function getRewardForTokenId(uint256 _tokenId) external nonReentrant {
+    function getRewardForTokenId(
+        uint256 _tokenId
+    ) external virtual nonReentrant {
         if (!veKitten.isApprovedOrOwner(msg.sender, _tokenId))
             revert NotApprovedOrOwner();
 
         _getRewardForTokenId(_tokenId, msg.sender);
     }
 
-    function getRewardForOwner(uint256 _tokenId) external nonReentrant {
+    function getRewardForOwner(uint256 _tokenId) external virtual nonReentrant {
         if (msg.sender != address(voter)) revert NotVoter();
 
         _getRewardForTokenId(_tokenId, veKitten.ownerOf(_tokenId));
@@ -116,6 +118,7 @@ abstract contract Reward is
     )
         public
         view
+        virtual
         returns (uint256[] memory rewardList, address[] memory tokenList)
     {
         tokenList = rewardTokenList.values();
@@ -134,7 +137,7 @@ abstract contract Reward is
     function earnedForToken(
         uint256 _tokenId,
         address _token
-    ) public view returns (uint256 reward) {
+    ) public view virtual returns (uint256 reward) {
         uint256 period = fullClaimedPeriod[_tokenId] > periodInit
             ? fullClaimedPeriod[_tokenId]
             : periodInit;
@@ -152,20 +155,23 @@ abstract contract Reward is
         uint256 _period,
         uint256 _tokenId,
         address _token
-    ) public view returns (uint256) {
+    ) public view virtual returns (uint256) {
         return _earned(_period, _tokenId, _token);
     }
 
-    function getCurrentPeriod() public view returns (uint256) {
+    function getCurrentPeriod() public view virtual returns (uint256) {
         return block.timestamp / DURATION;
     }
 
-    function getRewardList() external view returns (address[] memory) {
+    function getRewardList() external view virtual returns (address[] memory) {
         return rewardTokenList.values();
     }
 
     /* only voter functions */
-    function _deposit(uint256 _amount, uint256 _tokenId) external onlyVoter {
+    function _deposit(
+        uint256 _amount,
+        uint256 _tokenId
+    ) external virtual onlyVoter {
         uint256 nextPeriod = getCurrentPeriod() + 1;
 
         tokenIdVotesInPeriod[nextPeriod][_tokenId] += _amount;
@@ -174,7 +180,10 @@ abstract contract Reward is
         emit Deposit(nextPeriod, _amount, _tokenId);
     }
 
-    function _withdraw(uint256 _amount, uint256 _tokenId) external onlyVoter {
+    function _withdraw(
+        uint256 _amount,
+        uint256 _tokenId
+    ) external virtual onlyVoter {
         uint256 nextPeriod = getCurrentPeriod() + 1;
 
         if (tokenIdVotesInPeriod[nextPeriod][_tokenId] > 0) {
@@ -200,7 +209,7 @@ abstract contract Reward is
     function incentivize(
         address _token,
         uint256 _amount
-    ) external virtual nonReentrant {
+    ) public virtual nonReentrant {
         if (voter.isWhitelisted(_token) == false)
             revert NotWhitelistedRewardToken();
 
@@ -215,7 +224,7 @@ abstract contract Reward is
         uint256 _period,
         address _token,
         uint256 _amount
-    ) internal returns (uint256 amount) {
+    ) internal virtual returns (uint256 amount) {
         rewardTokenList.add(_token);
 
         IERC20 token = IERC20(_token);
@@ -234,7 +243,10 @@ abstract contract Reward is
         address _owner
     ) internal virtual;
 
-    function _getRewardForTokenId(uint256 _tokenId, address _to) internal {
+    function _getRewardForTokenId(
+        uint256 _tokenId,
+        address _to
+    ) internal virtual {
         uint256 len = rewardTokenList.length();
         address[] memory tokenList = rewardTokenList.values();
         uint256 currentPeriod = getCurrentPeriod();
@@ -259,7 +271,7 @@ abstract contract Reward is
         uint256 _period,
         uint256 _tokenId,
         address _token
-    ) internal view returns (uint256 reward) {
+    ) internal view virtual returns (uint256 reward) {
         if (totalVotesInPeriod[_period] > 0) {
             reward =
                 (rewardForPeriod[_period][_token] *
