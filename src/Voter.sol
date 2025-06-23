@@ -306,6 +306,8 @@ contract Voter is
     }
 
     function killGauge(address _gauge) external onlyRole(AUTHORIZED_ROLE) {
+        _updateFor(_gauge);
+
         if (isAlive[_gauge] == false) revert GaugeDead();
         isAlive[_gauge] = false;
         uint256 _claimable = claimable[_gauge];
