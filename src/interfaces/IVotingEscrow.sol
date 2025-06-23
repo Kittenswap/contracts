@@ -58,6 +58,7 @@ interface IVotingEscrow is IERC721 {
     error OverMaxLockTime();
     error NotExpired();
 
+    function MAXTIME() external view returns (uint256);
     function kitten() external view returns (address);
     function epoch() external view returns (uint256);
     function point_history(
@@ -66,6 +67,7 @@ interface IVotingEscrow is IERC721 {
         external
         view
         returns (int128 bias, int128 slope, uint256 ts, uint256 blk);
+    function tokenId() external view returns (uint256);
     function user_point_history(
         uint256 tokenId,
         uint256 loc
@@ -74,6 +76,9 @@ interface IVotingEscrow is IERC721 {
         view
         returns (int128 bias, int128 slope, uint256 ts, uint256 blk);
     function user_point_epoch(uint256 tokenId) external view returns (uint256);
+    function locked(
+        uint256 tokenId
+    ) external view returns (int128 amount, uint256 end);
 
     function isApprovedOrOwner(address, uint256) external view returns (bool);
 

@@ -60,7 +60,21 @@ contract RebaseReward is IRebaseReward, Reward {
             tokenIdRewardClaimedInPeriod[_period][_tokenId][_token] += reward;
 
             if (reward > 0) {
-                veKitten.deposit_for(_tokenId, reward);
+                (int128 amount, uint256 end) = veKitten.locked(_tokenId);
+                if (
+                    _tokenId <= veKitten.tokenId() &&
+                    amount > 0 &&
+                    end > block.timestamp
+                ) {
+                    veKitten.deposit_for(_tokenId, reward);
+                } else {
+                    veKitten.create_lock_for(
+                        reward,
+                        veKitten.MAXTIME(),
+                        _owner
+                    );
+                }
+
                 emit ClaimReward(_period, _tokenId, _token, _owner);
             }
         }

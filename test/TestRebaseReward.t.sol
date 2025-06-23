@@ -162,6 +162,66 @@ contract TestRebaseReward is TestVoter {
         );
     }
 
+    function test_WhenAmountIsZero_ShouldClaimRewardsInNewTokenId_GetRewardForTokenId()
+        public
+    {
+        test_CreateGauge();
+
+        CLGauge _gauge = CLGauge(gauge.get(poolList[0]));
+        RebaseReward _rebaseReward = RebaseReward(voter.rebaseReward());
+
+        // vote
+        vm.startPrank(address(voter));
+        address user1 = userList[0];
+        uint256 tokenId = veKitten.tokenOfOwnerByIndex(user1, 0);
+        _rebaseReward._deposit(1 ether, tokenId);
+        vm.stopPrank();
+
+        // notify reward after epoch ends/star of next epoch
+        vm.warp(ProtocolTimeLibrary.epochNext(block.timestamp));
+        uint256 kittenAmount = vm.randomUint(1 ether, 10 ether);
+
+        vm.prank(address(minter));
+        kitten.mint(address(minter), kittenAmount);
+        vm.stopPrank();
+
+        vm.startPrank(address(minter));
+        kitten.approve(address(_rebaseReward), kittenAmount);
+        _rebaseReward.notifyRewardAmount(address(kitten), kittenAmount);
+
+        vm.stopPrank();
+
+        // vote
+        vm.startPrank(address(voter));
+        _rebaseReward._deposit(1 ether, tokenId);
+        vm.stopPrank();
+
+        // next epoch
+        vm.warp(ProtocolTimeLibrary.epochNext(block.timestamp));
+        uint256 kittenAmount2 = vm.randomUint(1 ether, 10 ether);
+
+        vm.startPrank(address(minter));
+        kitten.mint(address(minter), kittenAmount2);
+        vm.stopPrank();
+
+        vm.startPrank(address(minter));
+        kitten.approve(address(_rebaseReward), kittenAmount2);
+        _rebaseReward.notifyRewardAmount(address(kitten), kittenAmount2);
+        vm.stopPrank();
+
+        vm.startPrank(user1);
+        (int128 veKittenBalBefore, ) = veKitten.locked(tokenId);
+
+        veKitten.split(tokenId, uint256(uint128(veKittenBalBefore)) / 2);
+        uint256 balanceOfOwnerBefore = veKitten.balanceOf(user1);
+
+        _rebaseReward.getRewardForTokenId(tokenId);
+        uint256 balanceOfOwnerAfter = veKitten.balanceOf(user1);
+        vm.stopPrank();
+
+        vm.assertGt(balanceOfOwnerAfter, balanceOfOwnerBefore);
+    }
+
     function test_RevertIf_RewardTokenNotKitten_Incentivize() public {
         test_CreateGauge();
         CLGauge _gauge = CLGauge(gauge.get(poolList[0]));
