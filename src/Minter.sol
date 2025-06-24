@@ -144,8 +144,13 @@ contract Minter is IMinter, UUPSUpgradeable, Ownable2StepUpgradeable {
     }
 
     function setTreasuryRate(uint256 _treasuryRate) external onlyOwner {
-        if (treasuryRate > MAX_TREASURY_RATE) revert TreasuryRateTooHigh();
+        if (_treasuryRate > MAX_TREASURY_RATE) revert TreasuryRateTooHigh();
         treasuryRate = _treasuryRate;
+    }
+
+    function setRebaseRate(uint256 _rebaseRate) external onlyOwner {
+        if (_rebaseRate > MAX_REBASE_RATE) revert RebaseRateTooHigh();
+        rebaseRate = _rebaseRate;
     }
 
     function _authorizeUpgrade(
