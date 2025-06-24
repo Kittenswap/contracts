@@ -61,6 +61,8 @@ contract Gauge is
     /* action lock */
     mapping(uint256 _blockNumber => mapping(address _user => bool)) userActionLocked; // 1 action per block, eg deposit or withdraw
 
+    uint256 public zeroSupplyRewards;
+
     /* modifiers */
     modifier actionLock() {
         if (userActionLocked[block.number][msg.sender]) revert ActionLocked();
@@ -209,6 +211,8 @@ contract Gauge is
 
         finishAt = block.timestamp + DURATION;
         updatedAt = block.timestamp;
+
+        if (totalSupply == 0) zeroSupplyRewards += _amount;
     }
 
     function claimFees()
@@ -217,6 +221,11 @@ contract Gauge is
         returns (uint256 claimed0, uint256 claimed1)
     {
         return _claimFees();
+    }
+
+    function transferRemainingKitten() external onlyOwner {
+        kitten.safeTransfer(msg.sender, zeroSupplyRewards);
+        zeroSupplyRewards = 0;
     }
 
     /* internal functions */

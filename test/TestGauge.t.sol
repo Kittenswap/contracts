@@ -293,4 +293,51 @@ contract TestGauge is TestVoter {
 
         vm.stopPrank();
     }
+
+    function test_ZeroSupplyRewards_TransferRemainingKitten() public {
+        // setup
+        test_CreateGauge();
+        Gauge _gauge = Gauge(gauge.get(pairListVolatile[0]));
+        address user1 = userList[0];
+        address lpToken = address(_gauge.lpToken());
+        vm.prank(kitten.minter());
+        kitten.mint(address(voter), 2 ether);
+        deal(lpToken, user1, 1 ether);
+
+        // voter distributes 1e18 KITTEN to the gauge
+        vm.prank(address(voter));
+        _gauge.notifyRewardAmount(1 ether);
+
+        // after 1 week, user1 deposits LP tokens into the gauge
+        vm.warp(block.timestamp + 1 weeks);
+        vm.startPrank(user1);
+        IERC20(lpToken).approve(address(_gauge), 1 ether);
+        _gauge.deposit(1 ether);
+        vm.stopPrank();
+
+        // voter distributes another 1e18 KITTEN to the gauge
+        vm.prank(address(voter));
+        _gauge.notifyRewardAmount(1 ether);
+
+        // after another week, user1 claims rewards
+        vm.warp(block.timestamp + 1 weeks);
+        vm.prank(user1);
+        _gauge.getReward(user1);
+
+        // gauge has 1e18 KITTEN balance, but no rewards left
+        assertGe(kitten.balanceOf(address(_gauge)), 1 ether);
+        assertEq(_gauge.left(), 0);
+
+        uint256 zeroSupplyRewards = _gauge.zeroSupplyRewards();
+        vm.assertGt(zeroSupplyRewards, 0);
+
+        // transfer remaining kitten out of gauge
+        vm.startPrank(deployer);
+        uint256 balBefore = kitten.balanceOf(deployer);
+        _gauge.transferRemainingKitten();
+        uint256 balAfter = kitten.balanceOf(deployer);
+        vm.stopPrank();
+
+        assertEq(balAfter - balBefore, zeroSupplyRewards);
+    }
 }
