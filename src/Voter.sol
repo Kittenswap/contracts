@@ -235,6 +235,7 @@ contract Voter is
         }
         minter = _minter;
         IMinter(minter).start();
+        periodInit = IMinter(minter).getCurrentPeriod();
     }
 
     function setMinter(address _minter) public onlyOwner {

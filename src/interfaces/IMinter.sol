@@ -7,4 +7,5 @@ interface IMinter {
 
     function start() external;
     function updatePeriod() external returns (bool);
+    function getCurrentPeriod() external view returns (uint256);
 }
