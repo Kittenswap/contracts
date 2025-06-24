@@ -514,7 +514,10 @@ contract TestCLGauge is TestVoter {
         vm.assertEq(_gaugefees0, 1);
         vm.assertEq(_gaugefees1, 1);
 
+        vm.stopPrank();
+        vm.prank(address(voter));
         clGauge.claimFees();
+        vm.startPrank(address(user1));
 
         console.log("fees0", clGauge.fees0());
         console.log("fees1", clGauge.fees1());
@@ -528,7 +531,10 @@ contract TestCLGauge is TestVoter {
         vm.assertEq(_gaugefees0, 1);
         vm.assertEq(_gaugefees1, 1);
 
+        vm.stopPrank();
+        vm.prank(address(voter));
         clGauge.claimFees();
+        vm.startPrank(address(user1));
 
         console.log("fees0", clGauge.fees0());
         console.log("fees1", clGauge.fees1());
@@ -542,7 +548,10 @@ contract TestCLGauge is TestVoter {
         vm.assertEq(_gaugefees0, 1);
         vm.assertEq(_gaugefees1, 1);
 
+        vm.stopPrank();
+        vm.prank(address(voter));
         clGauge.claimFees();
+        vm.startPrank(address(user1));
 
         console.log("fees0", clGauge.fees0());
         console.log("fees1", clGauge.fees1());
@@ -610,7 +619,10 @@ contract TestCLGauge is TestVoter {
         console.log("fees0 before", clGauge.fees0());
         console.log("fees1 before", clGauge.fees1());
 
+        vm.stopPrank();
+        vm.prank(address(voter));
         clGauge.claimFees();
+        vm.startPrank(address(user1));
 
         console.log("fees0 after", clGauge.fees0());
         console.log("fees1 after", clGauge.fees1());
@@ -646,7 +658,10 @@ contract TestCLGauge is TestVoter {
         console.log("fees0 before", clGauge.fees0());
         console.log("fees1 before", clGauge.fees1());
 
+        vm.stopPrank();
+        vm.prank(address(voter));
         clGauge.claimFees();
+        vm.startPrank(address(user1));
 
         console.log("fees0 after", clGauge.fees0());
         console.log("fees1 after", clGauge.fees1());

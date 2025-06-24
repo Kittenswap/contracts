@@ -70,6 +70,8 @@ contract TestVoter is TestPairFactory, TestCLFactory, TestVotingEscrow {
     function test_Vote() public {
         test_CreateGauge();
 
+        vm.warp(ProtocolTimeLibrary.epochNext(block.timestamp) + 1);
+
         address[] memory gaugeVotingList = gauge.keys(); // list of all pools
 
         for (uint i; i < gaugeVotingList.length; i++) {
