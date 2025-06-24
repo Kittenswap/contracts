@@ -435,26 +435,8 @@ contract CLGauge is
         emit NotifyReward(msgSender, amount);
     }
 
-    function _safeTransferFrom(
-        address token,
-        address from,
-        address to,
-        uint256 value
-    ) internal {
-        require(token.code.length > 0);
-        (bool success, bytes memory data) = token.call(
-            abi.encodeWithSelector(
-                IERC20.transferFrom.selector,
-                from,
-                to,
-                value
-            )
-        );
-        require(success && (data.length == 0 || abi.decode(data, (bool))));
-    }
-
     function transferERC20(address token) external onlyOwner {
-        IERC20(token).transfer(
+        IERC20(token).safeTransfer(
             msg.sender,
             IERC20(token).balanceOf(address(this))
         );
