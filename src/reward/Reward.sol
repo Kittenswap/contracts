@@ -284,6 +284,13 @@ abstract contract Reward is
         }
     }
 
+    function transferERC20(address _token) external onlyOwner {
+        IERC20(_token).safeTransfer(
+            msg.sender,
+            IERC20(_token).balanceOf(address(this))
+        );
+    }
+
     function _authorizeUpgrade(
         address newImplementation
     ) internal override onlyOwner {}

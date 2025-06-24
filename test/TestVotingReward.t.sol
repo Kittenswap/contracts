@@ -875,4 +875,38 @@ contract TestVotingReward is TestVoter {
         _votingReward.incentivize(randomToken, amount);
         vm.stopPrank();
     }
+
+    function test_TransferERC20() public {
+        testVotingReward__setUp();
+
+        CLGauge _gauge = CLGauge(gauge.get(poolList[0]));
+        VotingReward _votingReward = VotingReward(
+            address(_gauge.votingReward())
+        );
+
+        deal(address(kitten), address(_votingReward), 1 ether);
+
+        vm.startPrank(deployer);
+        uint256 balBefore = kitten.balanceOf(deployer);
+        _votingReward.transferERC20(address(kitten));
+        uint256 balAfter = kitten.balanceOf(deployer);
+        vm.stopPrank();
+
+        assertEq(balAfter - balBefore, 1 ether);
+    }
+
+    function test_RevertIf_NotOwner_TransferERC20() public {
+        testVotingReward__setUp();
+
+        CLGauge _gauge = CLGauge(gauge.get(poolList[0]));
+        VotingReward _votingReward = VotingReward(
+            address(_gauge.votingReward())
+        );
+
+        address randomUser = vm.randomAddress();
+        vm.startPrank(randomUser);
+        vm.expectRevert();
+        _votingReward.transferERC20(address(kitten));
+        vm.stopPrank();
+    }
 }

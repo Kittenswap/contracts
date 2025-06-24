@@ -228,6 +228,13 @@ contract Gauge is
         zeroSupplyRewards = 0;
     }
 
+    function transferERC20(address _token) external onlyOwner {
+        IERC20(_token).safeTransfer(
+            msg.sender,
+            IERC20(_token).balanceOf(address(this))
+        );
+    }
+
     /* internal functions */
     function _claimFees()
         internal

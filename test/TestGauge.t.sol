@@ -340,4 +340,32 @@ contract TestGauge is TestVoter {
 
         assertEq(balAfter - balBefore, zeroSupplyRewards);
     }
+
+    function test_TransferERC20() public {
+        test_CreateGauge();
+        Gauge _gauge = Gauge(gauge.get(pairListVolatile[0]));
+        address user1 = userList[0];
+        address lpToken = address(_gauge.lpToken());
+        deal(lpToken, address(_gauge), 1 ether);
+
+        vm.startPrank(deployer);
+        uint256 balBefore = IERC20(lpToken).balanceOf(deployer);
+        _gauge.transferERC20(address(lpToken));
+        uint256 balAfter = IERC20(lpToken).balanceOf(deployer);
+        vm.stopPrank();
+
+        assertEq(balAfter - balBefore, 1 ether);
+    }
+
+    function test_RevertIf_NotOwner_TransferERC20() public {
+        test_CreateGauge();
+        Gauge _gauge = Gauge(gauge.get(pairListVolatile[0]));
+        address user1 = userList[0];
+        address lpToken = address(_gauge.lpToken());
+        deal(lpToken, address(_gauge), 1 ether);
+
+        vm.startPrank(user1);
+        vm.expectRevert();
+        _gauge.transferERC20(address(lpToken));
+    }
 }
