@@ -81,7 +81,7 @@ contract Gauge is
     }
 
     modifier updateReward(address _account) {
-        rewardPerTokenStored = rewardPerToken();
+        rewardPerTokenStored = _rewardPerToken();
         updatedAt = lastTimeRewardApplicable();
 
         if (_account != address(0)) {
@@ -211,8 +211,6 @@ contract Gauge is
 
         finishAt = block.timestamp + DURATION;
         updatedAt = block.timestamp;
-
-        if (totalSupply == 0) zeroSupplyRewards += _amount;
     }
 
     function claimFees()
@@ -252,6 +250,20 @@ contract Gauge is
         }
 
         emit ClaimAndNotifyFees(msg.sender, claimed0, claimed1);
+    }
+
+    function _rewardPerToken() internal returns (uint256) {
+        if (totalSupply == 0) {
+            zeroSupplyRewards +=
+                (rewardRate * (lastTimeRewardApplicable() - updatedAt)) /
+                PRECISION;
+            return rewardPerTokenStored;
+        }
+
+        return
+            rewardPerTokenStored +
+            (rewardRate * (lastTimeRewardApplicable() - updatedAt)) /
+            totalSupply;
     }
 
     function _authorizeUpgrade(
